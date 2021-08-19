@@ -161,7 +161,7 @@ object TestUtil {
     val duration = Duration(seconds, TimeUnit.SECONDS)
     val handle = task
       .executeWithOptions(_.disableAutoCancelableRunLoops)
-      .runAsync(userScheduler.getOrElse(ExecutionContext.scheduler))
+      .runToFuture(userScheduler.getOrElse(ExecutionContext.scheduler))
     try Await.result(handle, duration)
     catch {
       case NonFatal(t) =>
@@ -177,7 +177,7 @@ object TestUtil {
   def blockingExecute(a: Action, state: State, duration: Duration = Duration.Inf): State = {
     val handle = interpreterTask(a, state)
       .executeWithOptions(_.disableAutoCancelableRunLoops)
-      .runAsync(ExecutionContext.scheduler)
+      .runToFuture(ExecutionContext.scheduler)
     try Await.result(handle, duration)
     catch {
       case NonFatal(t) => handle.cancel(); throw t

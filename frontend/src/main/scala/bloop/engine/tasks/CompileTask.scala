@@ -184,7 +184,7 @@ object CompileTask {
                     .doOnFinish(_ => Task(compileProjectTracer.terminate()))
                 postCompilationTasks
                   .executeWithOptions(_.disableAutoCancelableRunLoops)
-                  .runAsync(ExecutionContext.ioScheduler)
+                  .runToFuture(ExecutionContext.ioScheduler)
               }
 
               // Populate the last successful result if result was success

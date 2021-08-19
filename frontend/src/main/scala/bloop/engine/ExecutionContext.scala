@@ -44,9 +44,7 @@ object ExecutionContext {
   }
 
   import monix.execution.Scheduler
-  implicit lazy val scheduler: Scheduler = {
-    Scheduler.Implicits.global
-  }
+  implicit lazy val scheduler: Scheduler = Scheduler.fixedPool("test-scheduler", 5)
 
   val ioReporter = UncaughtExceptionReporter.LogExceptionsToStandardErr
   lazy val ioExecutor: ThreadPoolExecutor = {

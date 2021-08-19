@@ -178,9 +178,7 @@ trait BloopHelpers {
         beforeTask: Task[TestState] = Task.now(this)
     ): CancelableFuture[TestState] = {
       val interpretedTask = {
-        val task0 = beforeTask.flatMap { newState =>
-          newState.compileTask(project, watch)
-        }
+        val task0 = beforeTask.flatMap(newState => newState.compileTask(project, watch))
 
         delay match {
           case Some(duration) => task0.delayExecution(duration)
@@ -190,7 +188,7 @@ trait BloopHelpers {
 
       interpretedTask
         .executeWithOptions(_.disableAutoCancelableRunLoops)
-        .runAsync(ExecutionContext.scheduler)
+        .runToFuture(ExecutionContext.scheduler)
     }
 
     def cascadeCompile(projects: TestProject*): TestState = {
