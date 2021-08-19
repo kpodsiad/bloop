@@ -142,7 +142,16 @@ trait BloopHelpers {
 
     def compileTask(project: TestProject, watch: Boolean = false): Task[TestState] = {
       val compileTask = Run(Commands.Compile(List(project.config.name), watch = watch))
-      TestUtil.interpreterTask(compileTask, state).map(new TestState(_))
+      TestUtil
+        .interpreterTask(compileTask, state)
+        .map(new TestState(_))
+        .doOnCancel(
+          Task(
+            println(
+              s"task cancelled bloop helpers:compile task ${Thread.currentThread().getName()}"
+            )
+          )
+        )
     }
 
     def compile(projects: TestProject*): TestState = {
@@ -188,6 +197,10 @@ trait BloopHelpers {
 
       interpretedTask
         .executeWithOptions(_.disableAutoCancelableRunLoops)
+        .doOnCancel(
+          Task(println(s"task cancelled bloop helpers 3 ${Thread.currentThread().getName()}"))
+        )
+        .executeAsync
         .runToFuture(ExecutionContext.scheduler)
     }
 

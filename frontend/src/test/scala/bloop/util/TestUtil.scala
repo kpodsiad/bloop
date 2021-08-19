@@ -149,7 +149,13 @@ object TestUtil {
   }
 
   def interpreterTask(a: Action, state: State): Task[State] = {
-    Interpreter.execute(a, Task.now(state))
+    Interpreter
+      .execute(a, Task.now(state))
+      .doOnCancel(
+        Task(
+          println(s"task cancelled test util:interpreter task ${Thread.currentThread().getName()}")
+        )
+      )
   }
 
   def blockOnTask[T](

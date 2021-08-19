@@ -157,19 +157,24 @@ object Interpreter {
       val createReporter = (inputs: ReporterInputs[Logger]) =>
         new LogReporter(inputs.project, inputs.logger, inputs.cwd, config)
       import bloop.engine.tasks.compilation.CompileClientStore
-      CompileTask.compile(
-        state,
-        dag,
-        createReporter,
-        cmd.pipeline,
-        excludeRoot,
-        Promise[Unit](),
-        CompileClientStore.NoStore,
-        state.logger
-      )
+      CompileTask
+        .compile(
+          state,
+          dag,
+          createReporter,
+          cmd.pipeline,
+          excludeRoot,
+          Promise[Unit](),
+          CompileClientStore.NoStore,
+          state.logger
+        )
     }
 
-    compileTask.map(_.mergeStatus(ExitStatus.Ok))
+    compileTask
+      .map(_.mergeStatus(ExitStatus.Ok))
+      .doOnCancel(
+        Task(println(s"task cancelled interpreter:run compile ${Thread.currentThread().getName()}"))
+      )
   }
 
   private def compile(cmd: Commands.Compile, state: State): Task[State] = {
@@ -181,7 +186,11 @@ object Interpreter {
         else Dag.inverseDependencies(state.build.dags, lookup.found).reduced
       }
 
-      if (!cmd.watch) runCompile(cmd, state, projects, false, cmd.cliOptions.noColor)
+      if (!cmd.watch)
+        runCompile(cmd, state, projects, false, cmd.cliOptions.noColor)
+          .doOnCancel(
+            Task(println(s"task cancelled interpreter compile ${Thread.currentThread().getName()}"))
+          )
       else watch(projects, state)(runCompile(cmd, _, projects, false, cmd.cliOptions.noColor))
     }
   }

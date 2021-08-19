@@ -349,6 +349,7 @@ object Compiler {
 
     def cancel(): Unit = {
       // Complete all pending promises when compilation is cancelled
+      println(s"Cancelling compilation from ${readOnlyClassesDirPath} to ${newClassesDirPath}")
       logger.debug(s"Cancelling compilation from ${readOnlyClassesDirPath} to ${newClassesDirPath}")
       compileInputs.cancelPromise.trySuccess(())
       mode match {
@@ -381,7 +382,10 @@ object Compiler {
     BloopZincCompiler
       .compile(inputs, mode, reporter, logger, uniqueInputs, newFileManager, cancelPromise, tracer)
       .materialize
-      .doOnCancel(Task(cancel()))
+      .doOnCancel(Task {
+        println(s"task cancelled compile 1 ${Thread.currentThread().getName()}")
+        cancel()
+      })
       .map {
         case Success(_) if cancelPromise.isCompleted => handleCancellation
         case Success(result) =>
@@ -619,7 +623,7 @@ object Compiler {
               Result.Failed(Nil, Some(t), elapsed, backgroundTasks)
           }
       }
-  }
+  }.doOnCancel(Task(println("task cancelled compiler 5")))
 
   def toBackgroundTasks(
       tasks: List[(AbsolutePath, Reporter, BraveTracer) => Task[Unit]]
