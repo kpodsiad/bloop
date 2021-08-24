@@ -133,28 +133,30 @@ object SourceHasher {
         subscribed.success(())
         Cancelable { () =>
           isCancelled.compareAndSet(false, true)
-          sourceSubscription.cancel()
-          cb.onSuccess(mutable.ListBuffer.empty)
+          try consumerSubscription.cancel()
+          finally {
+            sourceSubscription.cancel()
+          }
         }
       }
     }
 
     val orderlyDiscovery = Task.fromFuture(subscribed.future).flatMap(_ => discoverFileTree)
-    val computation = Task
-      .mapBoth(orderlyDiscovery, collectAllSources) {
-        case (_, sources) => Right(sources.toList.distinct)
-      }
-      .doOnCancel(Task(cancelCompilation.success(())))
-
-    val fallback: Task[Either[Unit, List[HashedSource]]] =
-      Task.fromFuture(cancelCompilation.future).map(_ => Left(())).uncancelable
-
     Task
-      .race(computation, fallback)
-      .map {
-        case Left(computedHashes) => computedHashes
-        case Right(fallback) => fallback
+      .mapBoth(orderlyDiscovery, collectAllSources) {
+        case (_, sources) =>
+          if (!isCancelled.get)
+            Right(sources.toList.distinct)
+          else Left(())
       }
       .doOnCancel(Task { isCancelled.compareAndSet(false, true); () })
+      .onCancelRaiseError(new Exception("test"))
+      .onErrorFallbackTo(
+        Task {
+          println("fallback to the default")
+          cancelCompilation.trySuccess(())
+          Left(())
+        }
+      )
   }
 }
