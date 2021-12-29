@@ -360,6 +360,7 @@ object Interpreter {
               projectsToTest,
               cmd.args,
               testFilter,
+              Map.empty,
               handler,
               cmd.parallel,
               RunMode.Normal

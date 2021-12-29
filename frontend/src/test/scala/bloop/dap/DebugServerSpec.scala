@@ -875,6 +875,7 @@ object DebugServerSpec extends DebugBspBaseSuite {
     BloopDebuggeeRunner.forTestSuite(
       Seq(testState.getProjectFor(project)),
       List("MySuite"),
+      Map.empty,
       testState.state,
       defaultScheduler
     ) match {

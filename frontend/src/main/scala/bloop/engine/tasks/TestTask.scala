@@ -10,10 +10,11 @@ import bloop.io.AbsolutePath
 import bloop.logging.{DebugFilter, Logger}
 import bloop.testing.{DiscoveredTestFrameworks, LoggingEventHandler, TestInternals}
 import bloop.util.JavaCompat.EnrichOptional
+import cats.data.NonEmptyList
 import monix.eval.Task
 import monix.execution.atomic.AtomicBoolean
 import sbt.internal.inc.Analysis
-import sbt.testing.{Framework, SuiteSelector, TaskDef}
+import sbt.testing.{Framework, SuiteSelector, TaskDef, TestSelector}
 import xsbt.api.Discovery
 import xsbti.compile.CompileAnalysis
 
@@ -42,6 +43,7 @@ object TestTask {
       cwd: AbsolutePath,
       rawTestOptions: List[String],
       testFilter: String => Boolean,
+      selectedTests: Map[String, NonEmptyList[String]],
       handler: LoggingEventHandler,
       mode: RunMode
   ): Task[Int] = {
@@ -82,7 +84,14 @@ object TestTask {
           val configuredFrameworks = found.frameworks
           logger.debug(s"Found test frameworks: ${configuredFrameworks.map(_.name).mkString(", ")}")
           val suites =
-            discoverTestSuites(state, project, configuredFrameworks, compileAnalysis, testFilter)
+            discoverTestSuites(
+              state,
+              project,
+              configuredFrameworks,
+              compileAnalysis,
+              testFilter,
+              selectedTests
+            )
           val discoveredFrameworks = suites.iterator.filterNot(_._2.isEmpty).map(_._1).toList
           val (userJvmOptions, userTestOptions) = rawTestOptions.partition(_.startsWith("-J"))
           val jvmOptions = userJvmOptions.map(_.stripPrefix("-J"))
@@ -243,33 +252,51 @@ object TestTask {
     }
   }
 
+  case class TaskDefWithFramework(taskDef: TaskDef, framework: Framework)
+
   private[bloop] def discoverTestSuites(
       state: State,
       project: Project,
       frameworks: List[Framework],
       analysis: CompileAnalysis,
-      testFilter: String => Boolean
+      testFilter: String => Boolean,
+      selectedTests: Map[String, NonEmptyList[String]]
   ): Map[Framework, List[TaskDef]] = {
     import state.logger
     val tests = discoverTests(analysis, frameworks)
     val excluded = project.testOptions.excludes.toSet
     val ungroupedTests = tests.toList.flatMap {
-      case (framework, tasks) => tasks.map(t => (framework, t))
+      case (framework, tasks) => tasks.map(taskDef => TaskDefWithFramework(taskDef, framework))
     }
     val (includedTests, excludedTests) = ungroupedTests.partition {
-      case (_, task) =>
-        val fqn = task.fullyQualifiedName()
+      case TaskDefWithFramework(taskDef, _) =>
+        val fqn = taskDef.fullyQualifiedName()
         !excluded(fqn) && testFilter(fqn)
     }
     if (logger.isVerbose) {
-      val allNames = ungroupedTests.map(_._2.fullyQualifiedName).mkString(", ")
-      val includedNames = includedTests.map(_._2.fullyQualifiedName).mkString(", ")
-      val excludedNames = excludedTests.map(_._2.fullyQualifiedName).mkString(", ")
+      val allNames = ungroupedTests.map(_.taskDef.fullyQualifiedName).mkString(", ")
+      val includedNames = includedTests.map(_.taskDef.fullyQualifiedName).mkString(", ")
+      val excludedNames = excludedTests.map(_.taskDef.fullyQualifiedName).mkString(", ")
       logger.debug(s"Bloop found the following tests for ${project.name}: $allNames")
       logger.debug(s"The following tests were included by the filter: $includedNames")
       logger.debug(s"The following tests were excluded by the filter: $excludedNames")
     }
-    includedTests.groupBy(_._1).mapValues(_.map(_._2))
+    includedTests.groupBy(_.framework).mapValues {
+      _.map { withFramework =>
+        val taskDef = withFramework.taskDef
+        selectedTests.get(taskDef.fullyQualifiedName()) match {
+          case Some(selected) =>
+            taskDef.selectors()
+            new TaskDef(
+              taskDef.fullyQualifiedName(),
+              taskDef.fingerprint(),
+              false,
+              selected.map(test => new TestSelector(test)).toList.toArray
+            )
+          case None => taskDef
+        }
+      }
+    }
   }
 
   private[bloop] def discoverTests(

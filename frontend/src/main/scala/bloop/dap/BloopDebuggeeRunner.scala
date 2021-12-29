@@ -7,7 +7,8 @@ import bloop.engine.caches.ExpressionCompilerCache
 import bloop.engine.tasks.{RunMode, Tasks}
 import bloop.engine.{Dag, State}
 import bloop.logging.Logger
-import bloop.testing.{LoggingEventHandler, DebugLoggingEventHandler, TestInternals}
+import bloop.testing.{DebugLoggingEventHandler, LoggingEventHandler, TestInternals}
+import cats.data.NonEmptyList
 import ch.epfl.scala.bsp.ScalaMainClass
 import ch.epfl.scala.debugadapter._
 import monix.eval.Task
@@ -69,6 +70,7 @@ private final class MainClassDebugAdapter(
 private final class TestSuiteDebugAdapter(
     projects: Seq[Project],
     filters: List[String],
+    selectedTests: Map[String, NonEmptyList[String]],
     val classPathEntries: Seq[ClassPathEntry],
     val javaRuntime: Option[JavaRuntime],
     val evaluationClassLoader: Option[ClassLoader],
@@ -90,6 +92,7 @@ private final class TestSuiteDebugAdapter(
       projects.toList,
       Nil,
       filter,
+      selectedTests,
       handler,
       mode = RunMode.Debug
     )
@@ -149,6 +152,7 @@ object BloopDebuggeeRunner {
   def forTestSuite(
       projects: Seq[Project],
       filters: List[String],
+      selectedTests: Map[String, NonEmptyList[String]],
       state: State,
       ioScheduler: Scheduler
   ): Either[String, DebuggeeRunner] = {
@@ -164,6 +168,7 @@ object BloopDebuggeeRunner {
           new TestSuiteDebugAdapter(
             projects,
             filters,
+            selectedTests,
             classPathEntries,
             javaRuntime,
             evaluationClassLoader,
@@ -177,6 +182,7 @@ object BloopDebuggeeRunner {
           new TestSuiteDebugAdapter(
             projects,
             filters,
+            selectedTests,
             Seq.empty,
             None,
             None,

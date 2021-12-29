@@ -17,6 +17,7 @@ import sbt.internal.inc.{Analysis, AnalyzingCompiler, ConcreteAnalysisContents, 
 import sbt.internal.inc.classpath.ClasspathUtilities
 import sbt.testing._
 import xsbti.compile.{ClasspathOptionsUtil, CompileAnalysis, MiniSetup, PreviousResult}
+import cats.data.NonEmptyList
 
 object Tasks {
   private[bloop] val TestFailedStatus: Set[Status] =
@@ -90,6 +91,7 @@ object Tasks {
       projectsToTest: List[Project],
       userTestOptions: List[String],
       testFilter: String => Boolean,
+      selectedTests: Map[String, NonEmptyList[String]],
       testEventHandler: BloopTestSuiteEventHandler,
       runInParallel: Boolean = false,
       mode: RunMode
@@ -120,6 +122,7 @@ object Tasks {
         cwd,
         userTestOptions,
         testFilter,
+        selectedTests,
         failureHandler,
         mode
       )
