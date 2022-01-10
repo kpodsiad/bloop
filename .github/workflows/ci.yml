@@ -93,7 +93,7 @@ jobs:
           [[ $HYDRA_LICENSE == floating-key=* ]] && mkdir -p $HOME/.triplequote && echo "$HYDRA_LICENSE" > "$HOME/.triplequote/hydra.license" || echo "Hydra license file was not created"
         shell: bash
       - name: Load sbt
-        run: sbt
+        run: sbt exit
       - name: Compile projects
         run: sbt --client compile
 
