@@ -24,7 +24,7 @@ jobs:
     name: Build integrations tests
     runs-on: ${{ matrix.os }}
     env:
-      - SBT_NATIVE_CLIENT: true
+      SBT_NATIVE_CLIENT: true
     strategy:
       fail-fast: false
       matrix:
