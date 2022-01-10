@@ -19,9 +19,12 @@ jobs:
           java-version: graalvm-ce-java11@20.1.0
       - name: Check formatting
         run: ./bin/scalafmt --test
+
   integrations: 
     name: Build integrations tests
     runs-on: ${{ matrix.os }}
+    env:
+      - SBT_NATIVE_CLIENT: true
     strategy:
       fail-fast: false
       matrix:
@@ -40,17 +43,19 @@ jobs:
           path: |
             integrations/gradle-bloop/lib
           key: ${{ hashFiles('project/GradleIntegration.scala') }}
-      - name: Tests
-        run: |
-          ./bin/sbt-ci.sh \
-              "mavenBloop/publishM2" \
-              "mavenBloop/test" \
-              "gradleBloop211/compile" \
-              "gradleBloop212/compile" \
-              "gradleBloop212/test" \
-              "sbtBloop10Shaded/publishLocal" \
-              "sbtBloop10/scripted"
-        shell: bash
+
+      - name: Publish artifacts to the local Maven repository
+        run: sbt mavenBloop/publishM2
+
+      - name: Test maven integration
+        run: sbt mavenBloop/test
+
+      - name: Test gradle integration
+        run: sbt gradleBloop212/test
+
+      - name: Test sbt integration
+        run: sbt "sbtBloop10Shaded/publishLocal; sbtBloop10/scripted"
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -92,7 +97,6 @@ jobs:
         run: |
           ./bin/sbt-ci.sh \
               "frontend/test:compile" \
-              "sbtBloop013/compile" \
               "sbtBloop10/compile" \
               "mavenBloop/compile" \
               "backend/test" \
