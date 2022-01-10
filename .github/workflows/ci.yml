@@ -20,111 +20,134 @@ jobs:
       - name: Check formatting
         run: ./bin/scalafmt --test
 
-  integrations: 
-    name: Build integrations tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macOS-latest]
-        jdk: [graalvm-ce-java11@20.1.0]
-    steps:
-      - uses: actions/checkout@v2.4.0
-        with:
-          submodules: true
-      - uses: olafurpg/setup-scala@v13
-        with:
-          java-version: ${{ matrix.jdk }}
-      - name: Cache Gradle API
-        uses: actions/cache@v2
-        with:
-          path: |
-            integrations/gradle-bloop/lib
-          key: ${{ hashFiles('project/GradleIntegration.scala') }}
-
-      - name: Publish artifacts to the local Maven repository
-        run: sbt mavenBloop/publishM2
-
-      - name: Test maven integration
-        run: sbt --client mavenBloop/test
-
-      - name: Test gradle integration
-        run: sbt --client gradleBloop212/test
-
-      - name: Test sbt integration
-        run: sbt --client "sbtBloop10Shaded/publishLocal; sbtBloop10/scripted"
-
-  # test:
+  # integrations: 
+  #   name: Build integrations tests
   #   runs-on: ${{ matrix.os }}
   #   strategy:
   #     fail-fast: false
   #     matrix:
-  #       os: [ubuntu-latest, windows-latest, macOS-latest]
-  #       jdk: [graalvm-ce-java11@20.1.0, adopt@1.11]
-  #   name: Test ${{ matrix.os }} -- ${{ matrix.jdk }}
-  #   env:
-  #     HYDRA_LICENSE: ${{ secrets.HYDRA_LICENSE }}
+  #       os: [ubuntu-latest, macOS-latest]
+  #       jdk: [graalvm-ce-java11@20.1.0]
   #   steps:
   #     - uses: actions/checkout@v2.4.0
   #       with:
   #         submodules: true
-  #         fetch-depth: 0
   #     - uses: olafurpg/setup-scala@v13
   #       with:
   #         java-version: ${{ matrix.jdk }}
   #     - name: Cache Gradle API
-  #       # only launcher tests cause gradle API to be downloaded
-  #       # and they are only run on grallvm
-  #       if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
   #       uses: actions/cache@v2
   #       with:
   #         path: |
   #           integrations/gradle-bloop/lib
   #         key: ${{ hashFiles('project/GradleIntegration.scala') }}
-  #     - uses: actions/setup-node@v2.5.1
-  #       with:
-  #         node-version: "10.x"
-  #     - name: Set up environment
-  #       run: |
-  #         curl -Lo coursier https://git.io/coursier-cli && chmod +x coursier && ./coursier --help
-  #         yarn --help
-  #         java -version
-  #         [[ $HYDRA_LICENSE == floating-key=* ]] && mkdir -p $HOME/.triplequote && echo "$HYDRA_LICENSE" > "$HOME/.triplequote/hydra.license" || echo "Hydra license file was not created"
-  #       shell: bash
-  #     - name: Compile and test main projects
-  #       run: |
-  #         ./bin/sbt-ci.sh \
-  #             "frontend/test:compile" \
-  #             "sbtBloop10/compile" \
-  #             "mavenBloop/compile" \
-  #             "backend/test" \
-  #             "docs/compile" \
-  #             "jsBridge06/publishLocal" \
-  #             "jsBridge1/publishLocal" \
-  #             "frontend/testOnly bloop.ScalaVersionsSpec" \
-  #             "frontend/testOnly -bloop.ScalaVersionsSpec" \
-  #             "jsBridge06/test" \
-  #             "jsBridge1/test" \
-  #             "frontend/runMain bloop.util.CommandsDocGenerator --test" \
-  #             "frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md"
-  #       shell: bash
-  #     - name: Check docs are up-to-date
-  #       run: |
-  #         ./bin/check-good-practices.sh
-  #       shell: bash
-  #     - name: Run launcher tests
-  #       if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
-  #       run: |
-  #         echo $JAVA_HOME
-  #         which gu && gu install native-image
-  #         ./bin/sbt-ci.sh "install" "launcher/test"
-  #       shell: bash
-  #     - name: Benchmark
-  #       if: matrix.jdk == 'graalvm-ce-java11@20.1.0' && matrix.os != 'windows-latest'
-  #       run: |
-  #         ./bin/sbt-ci.sh \
-  #             "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
-  #       shell: bash
+
+  #     - name: Publish artifacts to the local Maven repository
+  #       run: sbt mavenBloop/publishM2
+
+  #     - name: Test maven integration
+  #       run: sbt --client mavenBloop/test
+
+  #     - name: Test gradle integration
+  #       run: sbt --client gradleBloop212/test
+
+  #     - name: Test sbt integration
+  #       run: sbt --client "sbtBloop10Shaded/publishLocal; sbtBloop10/scripted"
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        jdk: [graalvm-ce-java11@20.1.0, adopt@1.11]
+    name: Test ${{ matrix.os }} -- ${{ matrix.jdk }}
+    env:
+      HYDRA_LICENSE: ${{ secrets.HYDRA_LICENSE }}
+      JAVA_OPTS: "-Xmx3G"
+    steps:
+      - uses: actions/checkout@v2.4.0
+        with:
+          submodules: true
+          fetch-depth: 0
+      - uses: olafurpg/setup-scala@v13
+        with:
+          java-version: ${{ matrix.jdk }}
+      - name: Cache Gradle API
+        # only launcher tests cause gradle API to be downloaded
+        # and they are only run on grallvm
+        if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
+        uses: actions/cache@v2
+        with:
+          path: |
+            integrations/gradle-bloop/lib
+          key: ${{ hashFiles('project/GradleIntegration.scala') }}
+      - uses: actions/setup-node@v2.5.1
+        with:
+          node-version: "10.x"
+      - name: Set up environment
+        run: |
+          curl -Lo coursier https://git.io/coursier-cli && chmod +x coursier && ./coursier --help
+          yarn --help
+          java -version
+          [[ $HYDRA_LICENSE == floating-key=* ]] && mkdir -p $HOME/.triplequote && echo "$HYDRA_LICENSE" > "$HOME/.triplequote/hydra.license" || echo "Hydra license file was not created"
+        shell: bash
+      - name: Load sbt
+        run: sbt
+      - name: Compile projects
+        run: sbt --client compile
+
+      - name: Publish JS bridges
+        run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
+
+      - name: Test JS bridges
+        run: sbt --client "jsBridge06/test; jsBridge1/test"
+
+      - name: Test backend
+        run: sbt --client backend/test
+
+      - name: Generate docs
+        run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --test
+
+      - name: Check docs
+        run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
+
+      # - name:
+      #   run: sbt --client
+
+      # - name:
+      #   run: sbt --client
+
+      # - name: Compile and test main projects
+      #   run: |
+      #     ./bin/sbt-ci.sh \
+      #         "frontend/test:compile" \
+      #         "sbtBloop10/compile" \
+      #         "mavenBloop/compile" \
+      #         "backend/test" \
+      #         "docs/compile" \
+      #         "jsBridge06/publishLocal" \
+      #         "jsBridge1/publishLocal" \
+      #         "frontend/testOnly bloop.ScalaVersionsSpec" \
+      #         "frontend/testOnly -bloop.ScalaVersionsSpec" \
+      #         "jsBridge06/test" \
+      #         "jsBridge1/test" \
+      #         "frontend/runMain bloop.util.CommandsDocGenerator --test" \
+      #         "frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md"
+      #   shell: bash
+      - name: Check docs are up-to-date
+        run: |
+          ./bin/check-good-practices.sh
+        shell: bash
+      - name: Launcher tests
+        if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
+        run: |
+          echo $JAVA_HOME
+          which gu && gu install native-image
+          sbt --client "install; launcher/test"
+      - name: Benchmark
+        if: matrix.jdk == 'graalvm-ce-java11@20.1.0' && matrix.os != 'windows-latest'
+        run: sbt --client "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
 
   # publish-binaries:
   #   name: Publish binaries for ${{ matrix.os }}
