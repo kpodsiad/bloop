@@ -85,6 +85,12 @@ jobs:
       - uses: actions/setup-node@v2.5.1
         with:
           node-version: "10.x"
+      - name: Cache frontend/resources
+        uses: actions/cache@v2
+        with:
+          path: |
+            ./frontend/src/test/resources
+          key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
       - name: Set up environment
         run: |
           curl -Lo coursier https://git.io/coursier-cli && chmod +x coursier && ./coursier --help
@@ -105,6 +111,9 @@ jobs:
 
       - name: Test backend
         run: sbt --client backend/test
+
+      - name: Test frontend
+        run: sbt --client frontend/test
 
       - name: Generate docs
         run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --test
