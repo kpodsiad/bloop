@@ -108,12 +108,12 @@ jobs:
         shell: bash
 
       - name: Generate frontend resources config
-        if: steps.frontend-resources-cache.outputs.cache-hit != 'true'
+        if: matrix.os == 'windows-latest' or steps.frontend-resources-cache.outputs.cache-hit != 'true'
         run: sbt exit
         shell: bash
 
       - name: Compile projects
-        run: sbt --client compile
+        run: sbtx --client compile
         shell: bash
 
       - name: Publish JS bridges
