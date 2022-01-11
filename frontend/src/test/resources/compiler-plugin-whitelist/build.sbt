@@ -12,6 +12,7 @@ lazy val `bloop-test-plugin` = project
     bloopGenerate in Test := None
   )
 
+  
 val silencerVersion = "1.3.1"
 val derivingVersion = "1.0.0"
 // Don't add -Ycache-plugin-class-loader:last-modified, the point is that bloop will do it automatically
