@@ -85,12 +85,15 @@ jobs:
       - uses: actions/setup-node@v2.5.1
         with:
           node-version: "10.x"
+
       - name: Cache frontend/resources
+        id: frontend-resources
         uses: actions/cache@v2
         with:
           path: |
             ./frontend/src/test/resources
           key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
+
       - name: Set up environment
         run: |
           curl -Lo coursier https://git.io/coursier-cli && chmod +x coursier && ./coursier --help
@@ -98,16 +101,16 @@ jobs:
           java -version
           [[ $HYDRA_LICENSE == floating-key=* ]] && mkdir -p $HOME/.triplequote && echo "$HYDRA_LICENSE" > "$HOME/.triplequote/hydra.license" || echo "Hydra license file was not created"
         shell: bash
-      - name: Load sbt
+
+      - name: Generate frontend resources config
+        if: steps.frontend-resources.outputs.cache-hit != 'true'
         run: sbt exit
+
       - name: Compile projects
         run: sbt --client compile
 
-      - name: Publish JS bridges
-        run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
-
-      - name: Test JS bridges
-        run: sbt --client "jsBridge06/test; jsBridge1/test"
+      - name: Publish and test JS bridges
+        run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal; jsBridge06/test; jsBridge1/test"
 
       - name: Test backend
         run: sbt --client backend/test
