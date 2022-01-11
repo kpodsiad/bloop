@@ -86,11 +86,14 @@ jobs:
         with:
           node-version: "10.x"
 
-      - name: Cache sbt and frontend/resources
-        id: frontend-resources
+      - name: Cache sbt and coursier
+        id: coursier
         uses: coursier/cache-action@v6
         with:
           extraFiles: "**/*.sbt"
+
+      - name: Cache frontend/resources
+        id: frontend-resources
         uses: actions/cache@v2
         with:
           path: |
