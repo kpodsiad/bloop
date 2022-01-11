@@ -86,13 +86,13 @@ jobs:
         with:
           node-version: "10.x"
 
-      - name: Cache frontend/resources
-        id: frontend-resources
-        uses: actions/cache@v2
-        with:
-          path: |
-            ./frontend/src/test/resources
-          key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
+      # - name: Cache frontend/resources
+      #   id: frontend-resources
+      #   uses: actions/cache@v2
+      #   with:
+      #     path: |
+      #       ./frontend/src/test/resources
+      #     key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
 
       - name: Set up environment
         run: |
@@ -103,7 +103,6 @@ jobs:
         shell: bash
 
       - name: Generate frontend resources config
-        if: steps.frontend-resources.outputs.cache-hit != 'true'
         run: sbt exit
 
       - name: Compile projects
@@ -113,7 +112,7 @@ jobs:
         run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
 
       - name: Test JS bridges
-        run: sbt --client "jsBridge1/test; jsBridge06/test;"
+        run: sbt --client "jsBridge06/test; jsBridge1/test"
 
       - name: Test backend
         run: sbt --client backend/test
@@ -127,39 +126,18 @@ jobs:
       - name: Check docs
         run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
 
-      # - name:
-      #   run: sbt --client
-
-      # - name:
-      #   run: sbt --client
-
-      # - name: Compile and test main projects
-      #   run: |
-      #     ./bin/sbt-ci.sh \
-      #         "frontend/test:compile" \
-      #         "sbtBloop10/compile" \
-      #         "mavenBloop/compile" \
-      #         "backend/test" \
-      #         "docs/compile" \
-      #         "jsBridge06/publishLocal" \
-      #         "jsBridge1/publishLocal" \
-      #         "frontend/testOnly bloop.ScalaVersionsSpec" \
-      #         "frontend/testOnly -bloop.ScalaVersionsSpec" \
-      #         "jsBridge06/test" \
-      #         "jsBridge1/test" \
-      #         "frontend/runMain bloop.util.CommandsDocGenerator --test" \
-      #         "frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md"
-      #   shell: bash
       - name: Check docs are up-to-date
         run: |
           ./bin/check-good-practices.sh
         shell: bash
+
       - name: Launcher tests
         if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
         run: |
           echo $JAVA_HOME
           which gu && gu install native-image
           sbt --client "install; launcher/test"
+
       - name: Benchmark
         if: matrix.jdk == 'graalvm-ce-java11@20.1.0' && matrix.os != 'windows-latest'
         run: sbt --client "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
