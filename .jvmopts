@@ -1,3 +1,5 @@
--XX:ReservedCodeCacheSize=512m
+-Dfile.encoding=UTF-8
 -Dmetals.bloop-sbt-already-installed=true
 -Dsbt.execute.extrachecks=true
+-XX:ReservedCodeCacheSize=1024m
+-Xmx2G

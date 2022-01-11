@@ -64,7 +64,7 @@ jobs:
     name: Test ${{ matrix.os }} -- ${{ matrix.jdk }}
     env:
       HYDRA_LICENSE: ${{ secrets.HYDRA_LICENSE }}
-      JAVA_OPTS: "-Xmx3G"
+      # JAVA_OPTS: "-Xmx3G"
     steps:
       - uses: actions/checkout@v2.4.0
         with:
@@ -102,6 +102,7 @@ jobs:
       - name: Set up environment
         run: |
           curl -Lo coursier https://git.io/coursier-cli && chmod +x coursier && ./coursier --help
+          ./bin/sbt-args.sh
           yarn --help
           java -version
           [[ $HYDRA_LICENSE == floating-key=* ]] && mkdir -p $HOME/.triplequote && echo "$HYDRA_LICENSE" > "$HOME/.triplequote/hydra.license" || echo "Hydra license file was not created"
@@ -117,27 +118,27 @@ jobs:
         shell: bash
 
       - name: Publish JS bridges
-        run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
+        run: sbtx --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
         shell: bash
 
       - name: Test JS bridges
-        run: sbt --client "jsBridge06/test; jsBridge1/test"
+        run: sbtx --client "jsBridge06/test; jsBridge1/test"
         shell: bash
 
       - name: Test backend
-        run: sbt --client backend/test
+        run: sbtx --client backend/test
         shell: bash
 
       - name: Test frontend
-        run: sbt --client frontend/test
+        run: sbtx --client frontend/test
         shell: bash
 
       - name: Generate docs
-        run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --test
+        run: sbtx --client frontend/runMain bloop.util.CommandsDocGenerator --test
         shell: bash
 
       - name: Check docs
-        run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
+        run: sbtx --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
         shell: bash
 
       - name: Check docs are up-to-date
@@ -149,11 +150,11 @@ jobs:
         run: |
           echo $JAVA_HOME
           which gu && gu install native-image
-          sbt --client "install; launcher/test"
+          sbtx --client "install; launcher/test"
 
       - name: Benchmark
         if: matrix.jdk == 'graalvm-ce-java11@20.1.0' && matrix.os != 'windows-latest'
-        run: sbt --client "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
+        run: sbtx --client "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
 
   # publish-binaries:
   #   name: Publish binaries for ${{ matrix.os }}
