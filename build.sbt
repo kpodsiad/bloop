@@ -864,5 +864,6 @@ addCommandAlias(
 )
 
 
+
 val allReleaseActions = List("releaseEarlyAllModules", "sonatypeBundleRelease")
 addCommandAlias("releaseBloop", allReleaseActions.mkString(";", ";", ""))
