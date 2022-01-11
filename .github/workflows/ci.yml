@@ -87,13 +87,12 @@ jobs:
           node-version: "10.x"
 
       - name: Cache sbt and coursier
-        id: coursier
+        id: coursier-cache
         uses: coursier/cache-action@v6
         with:
           extraFiles: "**/*.sbt"
 
       - name: Cache frontend/resources
-        id: frontend-resources
         uses: actions/cache@v2
         with:
           path: |
@@ -109,6 +108,7 @@ jobs:
         shell: bash
 
       - name: Generate frontend resources config
+        if: steps.frontend-resources-cache.outputs.cache-hit != 'true'
         run: sbt exit
 
       - name: Compile projects
