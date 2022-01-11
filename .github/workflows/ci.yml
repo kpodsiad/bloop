@@ -110,27 +110,35 @@ jobs:
       - name: Generate frontend resources config
         if: steps.frontend-resources-cache.outputs.cache-hit != 'true'
         run: sbt exit
+        shell: bash
 
       - name: Compile projects
         run: sbt --client compile
+        shell: bash
 
       - name: Publish JS bridges
         run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
+        shell: bash
 
       - name: Test JS bridges
         run: sbt --client "jsBridge06/test; jsBridge1/test"
+        shell: bash
 
       - name: Test backend
         run: sbt --client backend/test
+        shell: bash
 
       - name: Test frontend
         run: sbt --client frontend/test
+        shell: bash
 
       - name: Generate docs
         run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --test
+        shell: bash
 
       - name: Check docs
         run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
+        shell: bash
 
       - name: Check docs are up-to-date
         run: ./bin/check-good-practices.sh
