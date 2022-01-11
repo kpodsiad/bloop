@@ -113,48 +113,48 @@ jobs:
         run: sbt exit
         shell: bash
 
-      - name: Compile projects
-        run: sbtx --client compile
-        shell: bash
+      # - name: Compile projects
+      #   run: sbtx --client compile
+      #   shell: bash
 
-      - name: Publish JS bridges
-        run: sbtx --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
-        shell: bash
+      # - name: Publish JS bridges
+      #   run: sbtx --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
+      #   shell: bash
 
-      - name: Test JS bridges
-        run: sbtx --client "jsBridge06/test; jsBridge1/test"
-        shell: bash
+      # - name: Test JS bridges
+      #   run: sbtx --client "jsBridge06/test; jsBridge1/test"
+      #   shell: bash
 
-      - name: Test backend
-        run: sbtx --client backend/test
-        shell: bash
+      # - name: Test backend
+      #   run: sbtx --client backend/test
+      #   shell: bash
 
-      - name: Test frontend
-        run: sbtx --client frontend/test
-        shell: bash
+      # - name: Test frontend
+      #   run: sbtx --client frontend/test
+      #   shell: bash
 
-      - name: Generate docs
-        run: sbtx --client frontend/runMain bloop.util.CommandsDocGenerator --test
-        shell: bash
+      # - name: Generate docs
+      #   run: sbtx --client frontend/runMain bloop.util.CommandsDocGenerator --test
+      #   shell: bash
 
-      - name: Check docs
-        run: sbtx --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
-        shell: bash
+      # - name: Check docs
+      #   run: sbtx --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
+      #   shell: bash
 
-      - name: Check docs are up-to-date
-        run: ./bin/check-good-practices.sh
-        shell: bash
+      # - name: Check docs are up-to-date
+      #   run: ./bin/check-good-practices.sh
+      #   shell: bash
 
-      - name: Launcher tests
-        if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
-        run: |
-          echo $JAVA_HOME
-          which gu && gu install native-image
-          sbtx --client "install; launcher/test"
+      # - name: Launcher tests
+      #   if: matrix.jdk == 'graalvm-ce-java11@20.1.0'
+      #   run: |
+      #     echo $JAVA_HOME
+      #     which gu && gu install native-image
+      #     sbtx --client "install; launcher/test"
 
-      - name: Benchmark
-        if: matrix.jdk == 'graalvm-ce-java11@20.1.0' && matrix.os != 'windows-latest'
-        run: sbtx --client "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
+      # - name: Benchmark
+      #   if: matrix.jdk == 'graalvm-ce-java11@20.1.0' && matrix.os != 'windows-latest'
+      #   run: sbtx --client "benchmarks/jmh:run .*HotBloopBenchmark.* -wi 0 -i 1 -f1 -t1 -p project=with-tests -p projectName=with-tests"
 
   # publish-binaries:
   #   name: Publish binaries for ${{ matrix.os }}
