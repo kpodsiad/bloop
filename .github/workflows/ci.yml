@@ -86,13 +86,16 @@ jobs:
         with:
           node-version: "10.x"
 
-      # - name: Cache frontend/resources
-      #   id: frontend-resources
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: |
-      #       ./frontend/src/test/resources
-      #     key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
+      - name: Cache sbt and frontend/resources
+        id: frontend-resources
+        uses: coursier/cache-action@v6
+        with:
+          extraFiles: "**/*.sbt"
+        uses: actions/cache@v2
+        with:
+          path: |
+            ./frontend/src/test/resources
+          key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
 
       - name: Set up environment
         run: |
