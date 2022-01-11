@@ -109,8 +109,11 @@ jobs:
       - name: Compile projects
         run: sbt --client compile
 
-      - name: Publish and test JS bridges
-        run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal; jsBridge06/test; jsBridge1/test"
+      - name: Publish JS bridges
+        run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
+
+      - name: Test JS bridges
+        run: sbt --client "jsBridge06/test; jsBridge1/test"
 
       - name: Test backend
         run: sbt --client backend/test
