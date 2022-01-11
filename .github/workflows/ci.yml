@@ -108,7 +108,7 @@ jobs:
         shell: bash
 
       - name: Generate frontend resources config
-        if: matrix.os == 'windows-latest' or steps.frontend-resources-cache.outputs.cache-hit != 'true'
+        if: steps.frontend-resources-cache.outputs.cache-hit != 'true'
         run: sbt exit
         shell: bash
 
