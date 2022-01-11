@@ -133,8 +133,7 @@ jobs:
         run: sbt --client frontend/runMain bloop.util.CommandsDocGenerator --out ../docs/cli/reference.md
 
       - name: Check docs are up-to-date
-        run: |
-          ./bin/check-good-practices.sh
+        run: ./bin/check-good-practices.sh
         shell: bash
 
       - name: Launcher tests
