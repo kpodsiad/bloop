@@ -98,7 +98,7 @@ jobs:
         with:
           path: |
             ./frontend/src/test/resources
-          key: ${{ runner.os }}-sbt-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
+          key: ${{ runner.os }}-resources-${{ hashFiles('./frontend/src/test/resources/**/*.sbt', './integrations/sbt-bloop/src/main/**/*.scala') }}
 
       - name: Set up environment
         run: |
