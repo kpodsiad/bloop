@@ -113,7 +113,7 @@ jobs:
         run: sbt --client "jsBridge06/publishLocal; jsBridge1/publishLocal"
 
       - name: Test JS bridges
-        run: sbt --client "jsBridge06/test; jsBridge1/test"
+        run: sbt --client "jsBridge1/test; jsBridge06/test;"
 
       - name: Test backend
         run: sbt --client backend/test
