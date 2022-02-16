@@ -2,13 +2,14 @@ package bloop.engine.tasks
 
 import bloop.cli.ExitStatus
 import bloop.config.{Config, Tag}
+import bloop.bsp.ScalaTestFrameworkSuites
 import bloop.data.{Platform, Project}
 import bloop.engine.{Dag, ExecutionContext, Feedback, State}
 import bloop.engine.tasks.toolchains.ScalaJsToolchain
 import bloop.exec.{Forker, JvmProcessForker}
 import bloop.io.AbsolutePath
 import bloop.logging.{DebugFilter, Logger}
-import bloop.testing.{DiscoveredTestFrameworks, LoggingEventHandler, TestInternals}
+import bloop.testing.{DiscoveredTestFrameworks, LoggingEventHandler, TestInternals, FingerprintInfo}
 import bloop.util.JavaCompat.EnrichOptional
 import monix.eval.Task
 import monix.execution.atomic.AtomicBoolean
@@ -280,14 +281,14 @@ object TestTask {
     val (subclassPrints, annotatedPrints) = TestInternals.getFingerprints(frameworks)
     val definitions = TestInternals.potentialTests(analysis)
     val discovered =
-      Discovery(subclassPrints.map(_._1).toSet, annotatedPrints.map(_._1).toSet)(definitions)
+      Discovery(subclassPrints.map(_.name).toSet, annotatedPrints.map(_.name).toSet)(definitions)
     val tasks = mutable.Map.empty[Framework, mutable.Buffer[TaskDef]]
     val seen = mutable.Set.empty[String]
     frameworks.foreach(tasks(_) = mutable.Buffer.empty)
     discovered.foreach {
       case (defn, discovered) =>
         TestInternals.matchingFingerprints(subclassPrints, annotatedPrints, discovered).foreach {
-          case (_, _, framework, fingerprint) =>
+          case FingerprintInfo(_, _, framework, fingerprint) =>
             if (seen.add(defn.name)) {
               tasks(framework) += new TaskDef(
                 defn.name,
@@ -311,25 +312,44 @@ object TestTask {
   def findFullyQualifiedTestNames(
       project: Project,
       state: State
-  ): Task[List[String]] = {
-    import state.logger
+  ): Task[List[String]] =
+    findFrameworkWithTestNames(project, state).map { tests =>
+      tests.values.flatten.toList
+    }
+
+  /**
+   * Finds the fully qualified names of the test names with test framework to which they belong.
+   *
+   * @param state   The current state of Bloop.
+   * @param project The project for which to find tests.
+   * @return An array containing all the testsFQCN that were detected.
+   */
+  def findTestNamesWithFramework(
+      project: Project,
+      state: State
+  ): Task[List[ScalaTestFrameworkSuites]] =
+    findFrameworkWithTestNames(project, state).map {
+      _.map { case (framework, names) => ScalaTestFrameworkSuites(framework.name, names) }.toList
+    }
+
+  private def findFrameworkWithTestNames(
+      project: Project,
+      state: State
+  ): Task[Map[Framework, List[String]]] = {
     TestTask.discoverTestFrameworks(project, state).map {
-      case None => List.empty[String]
+      case None => Map.empty
       case Some(found) =>
         val frameworks = found.frameworks
         val lastCompileResult = state.results.lastSuccessfulResultOrEmpty(project)
         val analysis = lastCompileResult.previous.analysis().toOption.getOrElse {
-          logger.debug(s"TestsFQCN was triggered, but no compilation detected for ${project.name}")(
-            DebugFilter.All
-          )
+          state.logger
+            .debug(s"TestsFQCN was triggered, but no compilation detected for ${project.name}")(
+              DebugFilter.All
+            )
           Analysis.empty
         }
         val tests = discoverTests(analysis, frameworks)
-        tests.toList
-          .flatMap {
-            case (framework, tasks) => tasks.map(t => (framework, t))
-          }
-          .map(_._2.fullyQualifiedName)
+        tests.mapValues(defs => defs.map(_.fullyQualifiedName))
     }
   }
 }

@@ -19,6 +19,7 @@ import bloop.bsp.BloopBspDefinitions.BloopExtraBuildParams
 import io.circe.Json
 import bloop.testing.DiffAssertions.TestFailedException
 import bloop.data.SourcesGlobs
+import scala.collection.immutable
 
 object TcpBspProtocolSpec extends BspProtocolSpec(BspProtocol.Tcp)
 object LocalBspProtocolSpec extends BspProtocolSpec(BspProtocol.Local)
@@ -310,6 +311,32 @@ class BspProtocolSpec(
     }
   }
 
+    test("find test suites") {
+    TestUtil.withinWorkspace { workspace =>
+      val logger = new RecordingLogger(ansiCodesSupported = false)
+      loadBspBuildFromResources("cross-test-build-scalajs-0.6", workspace, logger) { build =>
+        val project = build.projectFor("test-project-test")
+        val compiledState = build.state.compile(project, timeout = 120)
+        val expectedSuites: Set[ScalaTestFrameworkSuites] = Set(
+          ScalaTestFrameworkSuites("JUnit", List("hello.JUnitTest")),
+          ScalaTestFrameworkSuites("ScalaCheck", List("hello.ScalaCheckTest")),
+          ScalaTestFrameworkSuites("specs2", List("hello.Specs2Test")),
+          ScalaTestFrameworkSuites("utest", List("hello.EternalUTest", "hello.UTestTest")),
+          ScalaTestFrameworkSuites("ScalaTest", List("hello.ScalaTestTest", "hello.WritingTest", "hello.ResourcesTest")),
+        )
+
+        val testSuites = compiledState.testSuites(project)
+        val items = testSuites.items
+
+        assert(items.size == 1)
+
+        val classes = items.head.classes.toSet
+        try assertEquals(classes, expectedSuites)
+        catch { case t: TestFailedException => logger.dump(); throw t }
+      }
+    }
+  }
+
   test("build targets request works on complicated build") {
     TestUtil.withinWorkspace { workspace =>
       val logger = new RecordingLogger(ansiCodesSupported = false)
@@ -539,4 +566,5 @@ class BspProtocolSpec(
       }
     }
   }
+
 }

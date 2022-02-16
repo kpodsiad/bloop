@@ -322,6 +322,18 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       TestUtil.await(FiniteDuration(5, "s"))(task)
     }
 
+    def testSuites(project: TestProject): ScalaTestSuitesResult = {
+      val task = runAfterTargets(project) { target =>
+        val params = bsp.ScalaTestClassesParams(List(target), None)
+        ScalaTestSuitesEndpoint.endpoint.request(params).map {
+          case Left(error) => fail(s"Received error $error")
+          case Right(result) => result
+        }
+      }
+
+      TestUtil.await(FiniteDuration(5, "s"))(task)
+    }
+
     def withDebugSession[A](
         project: TestProject,
         paramsFactory: bsp.BuildTargetIdentifier => bsp.DebugSessionParams
