@@ -393,7 +393,7 @@ object CompileTask {
       parallelUnits: Int = Runtime.getRuntime().availableProcessors()
   ): Unit = {
     val aggregatedTask = Task.sequence(
-      tasks.toList.grouped(parallelUnits).map(group => Task.gatherUnordered(group))
+      tasks.toVector.grouped(parallelUnits).map(group => Task.gatherUnordered(group)).toVector
     )
     aggregatedTask.map(_ => ()).runAsync(ExecutionContext.ioScheduler)
     ()

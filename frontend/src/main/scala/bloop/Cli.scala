@@ -470,6 +470,7 @@ object Cli {
       val groups = deleteTasks
         .grouped(4)
         .map(group => Task.gatherUnordered(group).map(_ => ()))
+        .toVector
 
       Task
         .sequence(groups)

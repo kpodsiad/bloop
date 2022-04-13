@@ -1,31 +1,24 @@
 package bloop.dap
 
-import java.net.Socket
-import java.net.SocketException
+import java.net.{Socket, SocketException}
 import java.nio.ByteBuffer
 
-import scala.collection.mutable
-import scala.concurrent.Future
-import scala.concurrent.Promise
-import scala.meta.jsonrpc.BaseProtocolMessage
-import scala.meta.jsonrpc.MessageWriter
-
 import bloop.bsp.BloopLanguageClient
-import bloop.engine.ExecutionContext
-
-import com.microsoft.java.debug.core.protocol.Events
-import com.microsoft.java.debug.core.protocol.Events.DebugEvent
-import com.microsoft.java.debug.core.protocol.JsonUtils
-import com.microsoft.java.debug.core.protocol.Messages
 import com.microsoft.java.debug.core.protocol.Messages.ProtocolMessage
+import com.microsoft.java.debug.core.protocol.{JsonUtils, Messages}
 import monix.eval.Task
-import monix.execution.Ack
-import monix.execution.Scheduler
-import monix.reactive.MulticastStrategy
-import monix.reactive.Observable
-import monix.reactive.Observer
-import monix.reactive.observables.ObservableLike.Operator
+import monix.execution.{Ack, Scheduler}
+import monix.reactive.Observable.Operator
 import monix.reactive.observers.Subscriber
+import monix.reactive.{Observable, Observer}
+
+import scala.collection.mutable
+import scala.concurrent.{Future, Promise}
+import jsonrpc4s._
+import monix.reactive.MulticastStrategy
+import bloop.engine.ExecutionContext
+import com.microsoft.java.debug.core.protocol.Events.DebugEvent
+import com.microsoft.java.debug.core.protocol.Events
 
 /**
  * Handles communication with the debug adapter.
@@ -123,8 +116,9 @@ private[dap] final class DebugAdapterProxy(
 
 private[dap] object DebugAdapterProxy {
   def apply(socket: Socket): DebugAdapterProxy = {
-    val in = BaseProtocolMessage
-      .fromInputStream(socket.getInputStream, null)
+    val in = LowLevelMessage
+      .fromInputStream(socket.getInputStream(), null)
+      .map(msg => LowLevelMessage.toMsg(msg))
       .liftByOperator(Parser)
 
     val out = new Writer(BloopLanguageClient.fromOutputStream(socket.getOutputStream, null))
@@ -132,13 +126,13 @@ private[dap] object DebugAdapterProxy {
     new DebugAdapterProxy(in, out)
   }
 
-  private object Parser extends Operator[BaseProtocolMessage, Messages.ProtocolMessage] {
+  private object Parser extends Operator[Message, Messages.ProtocolMessage] {
     override def apply(
         upstream: Subscriber[Messages.ProtocolMessage]
-    ): Subscriber[BaseProtocolMessage] =
-      new Subscriber[BaseProtocolMessage] {
-        override def onNext(elem: BaseProtocolMessage): Future[Ack] = {
-          val content = new String(elem.content)
+    ): Subscriber[Message] =
+      new Subscriber[Message] {
+        override def onNext(elem: Message): Future[Ack] = {
+          val content = new String(elem.jsonrpc)
           val messageKind = JsonUtils.fromJson(content, classOf[ProtocolMessage]).`type`
           val targetType = messageKind match {
             case "request" => classOf[Messages.Request]
@@ -164,8 +158,7 @@ private[dap] object DebugAdapterProxy {
       extends Observer[Messages.ProtocolMessage] {
     override def onNext(elem: ProtocolMessage): Future[Ack] = {
       val bytes = JsonUtils.toJson(elem).getBytes
-      val message = BaseProtocolMessage.fromBytes(bytes)
-      val serialized = MessageWriter.write(message)
+      val serialized = ByteBuffer.wrap(bytes);
       underlying.onNext(serialized)
     }
     override def onError(ex: Throwable): Unit = underlying.onError(ex)

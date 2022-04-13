@@ -132,7 +132,7 @@ object SourceHasher {
         Cancelable.empty
       } else {
         val (out, consumerSubscription) = collectHashesConsumer.createSubscriber(cb, scheduler)
-        val hashSourcesInParallel = observable.mapAsync(parallelUnits) { (source: Path) =>
+        val hashSourcesInParallel = observable.mapParallelUnordered(parallelUnits) { (source: Path) =>
           Task.eval {
             val hash = ByteHasher.hashFileContents(source.toFile)
             HashedSource(PlainVirtualFileConverter.converter.toVirtualFile(source), hash)

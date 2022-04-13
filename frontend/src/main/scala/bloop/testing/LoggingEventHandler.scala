@@ -1,18 +1,15 @@
 package bloop.testing
 
 import scala.collection.mutable
-import scala.meta.jsonrpc.JsonRpcClient
-
 import ch.epfl.scala.bsp.BuildTargetIdentifier
 import ch.epfl.scala.debugadapter.DebuggeeListener
 import ch.epfl.scala.debugadapter.testing.TestSuiteEvent
 import ch.epfl.scala.debugadapter.testing.TestSuiteEventHandler
 import ch.epfl.scala.debugadapter.testing.TestUtils
-
 import bloop.logging.DebugFilter
 import bloop.logging.Logger
 import bloop.util.TimeFormat
-
+import jsonrpc4s.RpcClient
 import sbt.testing.Event
 import sbt.testing.Status
 
@@ -156,9 +153,9 @@ final class DebugLoggingEventHandler(logger: Logger, listener: DebuggeeListener)
     }
 }
 
-final class BspLoggingEventHandler(id: BuildTargetIdentifier, logger: Logger, client: JsonRpcClient)
+final class BspLoggingEventHandler(id: BuildTargetIdentifier, logger: Logger, client: RpcClient)
     extends LoggingEventHandler(logger) {
-  implicit val client0: JsonRpcClient = client
+  implicit val client0: RpcClient = client
   override def report(): Unit = {
     /*    val failed = suitesFailed.length
     val r = bsp.TestReport(id, None, suitesPassed, failed, 0, 0, 0, 0, Some(suitesDuration))

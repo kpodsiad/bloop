@@ -1,55 +1,46 @@
 package bloop.util
 
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
+import java.nio.charset.Charset
 import java.nio.file.attribute.FileTime
+import java.nio.file.{Files, Path, Paths}
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
-import scala.concurrent.Await
-import scala.concurrent.ExecutionException
-import scala.concurrent.duration.Duration
-import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.duration.TimeUnit
-import scala.meta.jsonrpc.Services
-import scala.tools.nsc.Properties
-import scala.util.control.NonFatal
-
-import bloop.CompilerCache
-import bloop.ScalaInstance
+import bloop.io.Environment.{lineSeparator, LineSplitter}
+import bloop.{CompilerCache, ScalaInstance}
 import bloop.cli.Commands
 import bloop.config.Config
 import bloop.config.Config.CompileOrder
-import bloop.data.JdkConfig
-import bloop.data.LoadedProject
-import bloop.data.Origin
-import bloop.data.Project
-import bloop.data.WorkspaceSettings
-import bloop.engine.Action
-import bloop.engine.Build
-import bloop.engine.BuildLoader
-import bloop.engine.ExecutionContext
-import bloop.engine.Interpreter
-import bloop.engine.Run
-import bloop.engine.State
+import bloop.data.{ClientInfo, Origin, Project, JdkConfig}
+import bloop.engine.{Action, Build, BuildLoader, ExecutionContext, Interpreter, Run, State}
 import bloop.engine.caches.ResultsCache
-import bloop.io.AbsolutePath
-import bloop.io.Environment.LineSplitter
-import bloop.io.Environment.lineSeparator
+import bloop.internal.build.BuildInfo
 import bloop.io.Paths.delete
-import bloop.io.RelativePath
-import bloop.logging.BloopLogger
-import bloop.logging.BspClientLogger
-import bloop.logging.BufferedLogger
-import bloop.logging.DebugFilter
-import bloop.logging.Logger
-import bloop.logging.RecordingLogger
+import bloop.io.{AbsolutePath, RelativePath}
+import bloop.logging.{
+  BloopLogger,
+  BspClientLogger,
+  BufferedLogger,
+  DebugFilter,
+  Logger,
+  RecordingLogger
+}
 
 import _root_.monix.eval.Task
 import _root_.monix.execution.Scheduler
+
 import org.junit.Assert
+import sbt.internal.inc.bloop.ZincInternals
+
+import scala.concurrent.duration.{Duration, FiniteDuration, TimeUnit}
+import scala.concurrent.{Await, ExecutionException}
+import jsonrpc4s.Services
+import scala.tools.nsc.Properties
+import scala.util.control.NonFatal
+import bloop.data.WorkspaceSettings
+import bloop.data.LoadedProject
 import sbt.internal.inc.BloopComponentCompiler
+import java.util.concurrent.TimeoutException
 import xsbti.ComponentProvider
 
 object TestUtil {
@@ -104,7 +95,7 @@ object TestUtil {
       failure: Boolean = false,
       useSiteLogger: Option[Logger] = None,
       order: CompileOrder = Config.Mixed
-  )(afterCompile: State => Unit = (_ => ())): Unit = {
+  )(afterCompile: State => Unit = (_ => ())) = {
     testState(structures, dependencies, scalaInstance, jdkConfig, order) { (state: State) =>
       def action(state0: State): Unit = {
         val state = useSiteLogger.map(logger => state0.copy(logger = logger)).getOrElse(state0)
@@ -162,7 +153,8 @@ object TestUtil {
       userScheduler: Option[Scheduler] = None
   ): T = {
     val duration = Duration(seconds, TimeUnit.SECONDS)
-    val handle = task.runAsync(userScheduler.getOrElse(ExecutionContext.scheduler))
+    val handle = task
+      .runAsync(userScheduler.getOrElse(ExecutionContext.scheduler))
     try Await.result(handle, duration)
     catch {
       case NonFatal(t) =>
@@ -176,7 +168,8 @@ object TestUtil {
   }
 
   def blockingExecute(a: Action, state: State, duration: Duration = Duration.Inf): State = {
-    val handle = interpreterTask(a, state).runAsync(ExecutionContext.scheduler)
+    val handle = interpreterTask(a, state)
+      .runAsync(ExecutionContext.scheduler)
     try Await.result(handle, duration)
     catch {
       case NonFatal(t) => handle.cancel(); throw t

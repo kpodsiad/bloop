@@ -23,9 +23,9 @@ import io.methvin.watcher.DirectoryWatcher
 import monix.eval.Task
 import monix.execution.Cancelable
 import monix.execution.atomic.AtomicBoolean
-import monix.execution.misc.NonFatal
 import monix.reactive.MulticastStrategy
 import monix.reactive.Observable
+import scala.util.control.NonFatal
 
 final class SourceWatcher private (
     projectNames: List[String],
@@ -198,8 +198,7 @@ final class SourceWatcher private (
       else FiniteDuration(userMs.toLong, "ms")
     }
 
-    observable
-      .transform(self => new BloopBufferTimedObservable(self, timespan, 0))
+    new BloopBufferTimedObservable(observable, timespan, 0)
       .liftByOperator(
         new BloopWhileBusyDropEventsAndSignalOperator((es: Seq[Seq[DirectoryChangeEvent]]) =>
           es.flatten

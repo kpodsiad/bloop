@@ -15,7 +15,7 @@ import bloop.io.Filenames
 import bloop.io.Paths
 import bloop.util.UUIDUtil
 
-import monix.execution.misc.NonFatal
+import scala.util.control.NonFatal
 
 sealed trait ClientInfo {
 

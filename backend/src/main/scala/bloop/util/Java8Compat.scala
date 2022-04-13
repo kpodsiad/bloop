@@ -15,8 +15,8 @@ import scala.util.Try
 import monix.execution.Cancelable
 import monix.execution.CancelableFuture
 import monix.execution.cancelables.SingleAssignmentCancelable
-import monix.execution.misc.NonFatal
 import monix.execution.schedulers.TrampolinedRunnable
+import scala.util.control.NonFatal
 
 /**
  * Utilities for integration with Java 8 classes

@@ -82,6 +82,7 @@ lazy val backend = project
   .dependsOn(bloopShared)
   .settings(
     name := "bloop-backend",
+    logLevel := Level.Error,
     buildInfoPackage := "bloop.internal.build",
     buildInfoKeys := BloopBackendInfoKeys,
     buildInfoObject := "BloopScalaInfo",
@@ -278,6 +279,7 @@ lazy val frontend: Project = project
     testSuiteSettings,
     Defaults.itSettings,
     BuildDefaults.frontendTestBuildSettings,
+    logLevel := Level.Error,
     // Can be removed when metals upgrades to 1.3.0
     inConfig(IntegrationTest)(BloopDefaults.configSettings),
     inConfig(Compile)(

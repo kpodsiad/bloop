@@ -31,10 +31,10 @@ import bloop.reporter.LogReporter
 import bloop.reporter.ReporterConfig
 
 import monix.eval.Task
-import monix.execution.misc.NonFatal
 import sbt.internal.inc.Analysis
 import sbt.internal.inc.FileAnalysisStore
 import xsbti.compile.PreviousResult
+import scala.util.control.NonFatal
 
 /**
  * Maps projects to compilation results, populated by `Tasks.compile`.

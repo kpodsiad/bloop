@@ -15,12 +15,12 @@ import bloop.logging.DebugFilter
 import bloop.logging.Logger
 
 import monix.eval.Task
-import monix.execution.misc.NonFatal
 import sbt.ForkConfiguration
 import sbt.ForkTags
 import sbt.testing.Event
 import sbt.testing.Framework
 import sbt.testing.TaskDef
+import scala.util.control.NonFatal
 
 /**
  * Implements the protocol that the forked remote JVM talks with the host process.

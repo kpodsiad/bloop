@@ -184,7 +184,7 @@ object BuildLoader {
           }
 
           // Run coeval, we rethrow but note that `tryEnablingSemanticDB` handles errors
-          coeval.run match {
+          coeval.run.toEither match {
             case Left(value) => throw value
             case Right(value) => value
           }

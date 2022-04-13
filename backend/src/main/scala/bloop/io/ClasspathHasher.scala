@@ -26,6 +26,7 @@ import monix.reactive.Observable
 import sbt.internal.inc.bloop.internal.BloopStamps
 import sbt.io.IO
 import xsbti.compile.FileHash
+import scala.util.control.NonFatal
 
 object ClasspathHasher {
 
@@ -76,7 +77,7 @@ object ClasspathHasher {
 
     val isCancelled = AtomicBoolean(false)
     val parallelConsumer = {
-      Consumer.foreachParallelAsync[AcquiredTask](parallelUnits) {
+      Consumer.foreachParallelTask[AcquiredTask](parallelUnits) {
         case AcquiredTask(path, idx, p) =>
           // Use task.now because Monix's load balancer already forces an async boundary
           val hashingTask = Task.now {
@@ -108,7 +109,7 @@ object ClasspathHasher {
                 }
               } catch {
                 // Can happen when a file doesn't exist, for example
-                case monix.execution.misc.NonFatal(t) => BloopStamps.emptyHash(path)
+                case NonFatal(t) => BloopStamps.emptyHash(path)
               }
             classpathHashes(idx) = hash
             hashingPromises.remove(path, p)

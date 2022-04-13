@@ -8,9 +8,9 @@ import scala.util.Success
 import monix.execution.Ack
 import monix.execution.Ack.Continue
 import monix.execution.Ack.Stop
-import monix.execution.misc.NonFatal
-import monix.reactive.observables.ObservableLike.Operator
+import monix.reactive.Observable.Operator
 import monix.reactive.observers.Subscriber
+import scala.util.control.NonFatal
 
 final class BloopWhileBusyDropEventsAndSignalOperator[A](onOverflow: Seq[A] => A)
     extends Operator[A, A] {

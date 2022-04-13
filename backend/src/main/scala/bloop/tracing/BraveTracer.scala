@@ -8,9 +8,9 @@ import brave.propagation.SamplingFlags
 import brave.propagation.TraceContext
 import brave.propagation.TraceContextOrSamplingFlags
 import monix.eval.Task
-import monix.execution.misc.NonFatal
 import zipkin2.codec.SpanBytesEncoder.JSON_V1
 import zipkin2.codec.SpanBytesEncoder.JSON_V2
+import scala.util.control.NonFatal
 
 final class BraveTracer private (
     tracer: Tracer,

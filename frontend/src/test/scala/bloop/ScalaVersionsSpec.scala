@@ -9,7 +9,7 @@ import bloop.util.TestProject
 import bloop.util.TestUtil
 
 import monix.eval.Task
-import monix.execution.misc.NonFatal
+import scala.util.control.NonFatal
 
 object ScalaVersionsSpec extends bloop.testing.BaseSuite {
   test("cross-compile build to latest Scala versions") {
@@ -80,7 +80,7 @@ object ScalaVersionsSpec extends bloop.testing.BaseSuite {
     try {
       TestUtil.await(FiniteDuration(120, "s"), ExecutionContext.ioScheduler) {
         Task
-          .sequence(all.grouped(2).map(group => Task.gatherUnordered(group)))
+          .sequence(all.grouped(2).map(group => Task.gatherUnordered(group)).toVector)
           .map(_ => ())
       }
     } catch {

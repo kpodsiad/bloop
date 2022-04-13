@@ -19,7 +19,7 @@ import bloop.util.TestProject
 import bloop.util.TestUtil
 
 import monix.eval.Task
-import monix.execution.misc.NonFatal
+import scala.util.control.NonFatal
 import utest.TestSuite
 import utest.Tests
 import utest.asserts.Asserts

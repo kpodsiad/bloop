@@ -1,26 +1,28 @@
 package bloop.bsp
 
+import java.io.File
 import java.net.URI
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
 
-import ch.epfl.scala.bsp.JvmEnvironmentItem
-import ch.epfl.scala.bsp.ScalacOptionsItem
-import ch.epfl.scala.bsp.Uri
-
-import bloop.bsp.BloopBspDefinitions.BloopExtraBuildParams
-import bloop.cli.BspProtocol
-import bloop.cli.ExitStatus
+import bloop.engine.State
 import bloop.config.Config
 import bloop.io.AbsolutePath
+import bloop.cli.{BspProtocol, ExitStatus}
+import bloop.util.{TestProject, TestUtil}
 import bloop.logging.RecordingLogger
-import bloop.testing.DiffAssertions.TestFailedException
-import bloop.util.TestProject
-import bloop.util.TestUtil
+import bloop.internal.build.BuildInfo
+import java.nio.file.{Files, Path, Paths}
+import java.util.stream.Collectors
 
-object TcpBspProtocolSpec extends BspProtocolSpec(BspProtocol.Tcp)
-object LocalBspProtocolSpec extends BspProtocolSpec(BspProtocol.Local)
+import scala.collection.JavaConverters._
+import ch.epfl.scala.bsp.{JvmEnvironmentItem, ScalacOptionsItem, Uri}
+import bloop.bsp.BloopBspDefinitions.BloopExtraBuildParams
+import com.github.plokhotnyuk.jsoniter_scala.core._
+import bloop.testing.DiffAssertions.TestFailedException
+import bloop.data.SourcesGlobs
+import scala.util.{Try, Success, Failure}
+
+ object TcpBspProtocolSpec extends BspProtocolSpec(BspProtocol.Tcp)
+ object LocalBspProtocolSpec extends BspProtocolSpec(BspProtocol.Local)
 
 class BspProtocolSpec(
     override val protocol: BspProtocol
@@ -323,21 +325,20 @@ class BspProtocolSpec(
           val bspTarget = build.state.findBuildTarget(project)
           assert(bspTarget.languageIds.sorted == List("java", "scala"))
           val json = bspTarget.data.get
-          bsp.ScalaBuildTarget.decodeScalaBuildTarget(json.hcursor) match {
-            case Right(scalaTarget) =>
+          Try(readFromArray[bsp.ScalaBuildTarget](json.value)) match {
+            case Success(scalaTarget) =>
               val expectedVersion = project.config.scala.get.version
               val expectedPlatform = project.config.platform.get match {
                 case _: Config.Platform.Jvm => bsp.ScalaPlatform.Jvm
                 case _: Config.Platform.Js => bsp.ScalaPlatform.Js
                 case _: Config.Platform.Native => bsp.ScalaPlatform.Native
               }
-
               assert(scalaTarget.jars.nonEmpty)
               assert(scalaTarget.scalaOrganization.nonEmpty)
               assert(expectedVersion == scalaTarget.scalaVersion)
               assert(expectedVersion.startsWith(scalaTarget.scalaBinaryVersion))
               assert(scalaTarget.platform == expectedPlatform)
-            case Left(e) => fail(s"Couldn't decode scala build target for ${bspTarget}")
+            case Failure(e) => fail(s"Couldn't decode scala build target for ${bspTarget}")
           }
         }
 
@@ -538,7 +539,7 @@ class BspProtocolSpec(
     }
   }
 
-  test("inverse sources request works") {
+    test("inverse sources request works") {
     TestUtil.withinWorkspace { workspace =>
       val logger = new RecordingLogger(ansiCodesSupported = false)
       loadBspBuildFromResources("cross-test-build-scalajs-0.6", workspace, logger) { build =>

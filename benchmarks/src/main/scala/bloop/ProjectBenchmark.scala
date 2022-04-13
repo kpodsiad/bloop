@@ -13,7 +13,7 @@ import bloop.engine.NoPool
 import bloop.io.AbsolutePath
 import bloop.logging.NoopLogger
 
-import monix.execution.misc.NonFatal
+import scala.util.control.NonFatal
 import org.openjdk.jmh.annotations.Benchmark
 import org.openjdk.jmh.annotations.Mode.SampleTime
 import org.openjdk.jmh.annotations._

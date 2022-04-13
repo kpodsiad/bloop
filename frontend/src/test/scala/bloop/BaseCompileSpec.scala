@@ -29,7 +29,7 @@ import bloop.util.BuildUtil
 import bloop.util.TestUtil
 
 import monix.eval.Task
-import monix.execution.misc.NonFatal
+import scala.util.control.NonFatal
 
 abstract class BaseCompileSpec extends bloop.testing.BaseSuite {
   protected def TestProject: BaseTestProject
