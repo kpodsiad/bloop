@@ -21,8 +21,8 @@ import bloop.testing.DiffAssertions.TestFailedException
 import bloop.data.SourcesGlobs
 import scala.util.{Try, Success, Failure}
 
- object TcpBspProtocolSpec extends BspProtocolSpec(BspProtocol.Tcp)
- object LocalBspProtocolSpec extends BspProtocolSpec(BspProtocol.Local)
+object TcpBspProtocolSpec extends BspProtocolSpec(BspProtocol.Tcp)
+object LocalBspProtocolSpec extends BspProtocolSpec(BspProtocol.Local)
 
 class BspProtocolSpec(
     override val protocol: BspProtocol

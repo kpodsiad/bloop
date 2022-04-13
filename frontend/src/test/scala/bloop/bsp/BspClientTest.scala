@@ -2,47 +2,32 @@ package bloop.bsp
 
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutionException
-
-import scala.collection.mutable
-import scala.concurrent.Promise
-import scala.concurrent.duration.FiniteDuration
-import scala.meta.jsonrpc.BaseProtocolMessage
-import scala.meta.jsonrpc.LanguageClient
-import scala.meta.jsonrpc.LanguageServer
-import scala.meta.jsonrpc.Response
-import scala.meta.jsonrpc.Services
-
-import ch.epfl.scala.bsp
-import ch.epfl.scala.bsp.endpoints
-
-import bloop.cli.BspProtocol
-import bloop.cli.CliOptions
-import bloop.cli.Commands
-import bloop.cli.Validate
+import java.nio.file.{Files, Path}
+import java.util.concurrent.{ConcurrentHashMap, ExecutionException}
+import bloop.engine.{Run, State}
+import bloop.cli.{BspProtocol, CliOptions, Commands, Validate}
 import bloop.engine.ExecutionContext
-import bloop.engine.Run
-import bloop.engine.State
 import bloop.engine.caches.ResultsCache
 import bloop.internal.build.BuildInfo
-import bloop.io.AbsolutePath
+import bloop.io.{AbsolutePath, RelativePath}
 import bloop.io.Environment.END_OF_LINE_MATCHER
-import bloop.io.RelativePath
-import bloop.logging.BspClientLogger
-import bloop.logging.DebugFilter
-import bloop.logging.RecordingLogger
-import bloop.logging.Slf4jAdapter
-import bloop.util.TestUtil
-import bloop.util.UUIDUtil
-
+import bloop.logging.{BspClientLogger, DebugFilter, Logger, RecordingLogger, Slf4jAdapter}
+import bloop.util.{TestUtil, UUIDUtil}
+import ch.epfl.scala.bsp
+import ch.epfl.scala.bsp.endpoints
 import monix.eval.Task
-import monix.execution.ExecutionModel
-import monix.execution.Scheduler
-import monix.{eval => me}
+import monix.execution.{ExecutionModel, Scheduler}
 import sbt.internal.util.MessageOnlyException
+
+import scala.collection.mutable
+import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.Promise
+import jsonrpc4s._
+import com.github.plokhotnyuk.jsoniter_scala.core._
+
+import scala.util.Try
+import scala.util.Failure
+import scala.util.Success
 
 object BspClientTest extends BspClientTest
 trait BspClientTest {
@@ -126,7 +111,7 @@ trait BspClientTest {
       addDiagnosticsHandler: Boolean = true,
       userState: Option[State] = None,
       userScheduler: Option[Scheduler] = None
-  )(runEndpoints: LanguageClient => me.Task[Either[Response.Error, T]]): Option[T] = {
+  )(runEndpoints: RpcClient => Task[Either[Response.Error, T]]): Option[T] = {
     val ioScheduler = userScheduler.getOrElse(defaultScheduler)
     val logger = logger0.asVerbose.asInstanceOf[logger0.type]
     // Set an empty results cache and update the state globally
@@ -148,12 +133,13 @@ trait BspClientTest {
       val in = socket.getInputStream
       val out = socket.getOutputStream
 
-      implicit val lsClient = new LanguageClient(out, logger)
-      val messages = BaseProtocolMessage.fromInputStream(in, logger)
-      val services =
-        customServices(TestUtil.createTestServices(addDiagnosticsHandler, logger))
-      val lsServer = new LanguageServer(messages, lsClient, services, ioScheduler, logger)
-      val runningClientServer = lsServer.startTask.runAsync(ioScheduler)
+      implicit val lsClient = RpcClient.fromOutputStream(out, logger)
+      val messages = LowLevelMessage
+        .fromInputStream(in, logger)
+        .mapEval(msg => Task(LowLevelMessage.toMsg(msg)))
+      val services = customServices(TestUtil.createTestServices(addDiagnosticsHandler, logger))
+      val lsServer = RpcServer(messages, lsClient, services, ioScheduler, logger)
+      val runningClientServer = lsServer.startTask(Task.unit).runAsync(ioScheduler)
 
       val cwd = configDirectory.underlying.getParent
       val initializeServer = endpoints.Build.initialize.request(
@@ -201,13 +187,15 @@ trait BspClientTest {
     }
   }
 
-  def establishClientConnection(cmd: Commands.ValidatedBsp): me.Task[java.net.Socket] = {
+  def establishClientConnection(cmd: Commands.ValidatedBsp): Task[java.net.Socket] = {
     import bloop.sockets.UnixDomainSocket
     import bloop.sockets.Win32NamedPipeSocket
-    val connectToServer = me.Task {
+    val connectToServer = Task {
       cmd match {
-        case cmd: Commands.TcpBsp => new java.net.Socket(cmd.host, cmd.port)
-        case cmd: Commands.UnixLocalBsp => new UnixDomainSocket(cmd.socket.syntax)
+        case cmd: Commands.TcpBsp =>
+          new java.net.Socket(cmd.host, cmd.port)
+        case cmd: Commands.UnixLocalBsp => 
+          new UnixDomainSocket(cmd.socket.syntax)
         case cmd: Commands.WindowsLocalBsp => new Win32NamedPipeSocket(cmd.pipeName)
       }
     }
@@ -216,17 +204,17 @@ trait BspClientTest {
 
   // Courtesy of @olafurpg
   def retryBackoff[A](
-      source: me.Task[A],
+      source: Task[A],
       maxRetries: Int,
       firstDelay: FiniteDuration
-  ): me.Task[A] = {
+  ): Task[A] = {
     source.onErrorHandleWith {
       case ex: Exception =>
         if (maxRetries > 0)
           // Recursive call, it's OK as Monix is stack-safe
           retryBackoff(source, maxRetries - 1, firstDelay * 2)
             .delayExecution(firstDelay)
-        else me.Task.raiseError(ex)
+        else Task.raiseError(ex)
     }
   }
 
@@ -261,9 +249,9 @@ trait BspClientTest {
         taskStart.dataKind match {
           case Some(bsp.TaskDataKind.CompileTask) =>
             val json = taskStart.data.get
-            bsp.CompileTask.decodeCompileTask(json.hcursor) match {
-              case Left(failure) => ()
-              case Right(compileTask) =>
+            Try(readFromArray[bsp.CompileTask](json.value)) match {
+              case Failure(failure) => ()
+              case Success(compileTask) =>
                 compileStartPromises.foreach(
                   promises => promises.get(compileTask.target).map(_.trySuccess(()))
                 )
@@ -287,9 +275,9 @@ trait BspClientTest {
         taskFinish.dataKind match {
           case Some(bsp.TaskDataKind.CompileReport) =>
             val json = taskFinish.data.get
-            bsp.CompileReport.decodeCompileReport(json.hcursor) match {
-              case Left(failure) => ()
-              case Right(report) =>
+            Try(readFromArray[bsp.CompileReport](json.value)) match {
+              case Failure(failure) => ()
+              case Success(report) =>
                 record(
                   report.target,
                   (builder: StringBuilder) => {
@@ -377,18 +365,19 @@ trait BspClientTest {
     val logger = new BspClientLogger(new RecordingLogger)
     val stringifiedDiagnostics = new ConcurrentHashMap[bsp.BuildTargetIdentifier, StringBuilder]()
 
-    def runFromWorkspaceTargets(targets: List[bsp.BuildTarget])(implicit client: LanguageClient) = {
+    def runFromWorkspaceTargets(targets: List[bsp.BuildTarget])(implicit client: RpcClient) = {
       def compileProject(tid: bsp.BuildTargetIdentifier): Task[Either[String, Unit]] = {
         endpoints.BuildTarget.compile
           .request(bsp.CompileParams(List(tid), None, None))
-          .map {
-            case Right(r) => compilationResults.++=(s"${r.statusCode}"); Right(())
-            case Left(e) =>
+          .map( _ match {
+            case RpcSuccess(compileResult, underlying) => 
+              compilationResults.++=(s"${compileResult.statusCode}"); Right(())
+            case RpcFailure(methodName, e) =>
               Left(
                 s"""Compilation error for request ${e.id}:
                    |${e.error}""".stripMargin
               )
-          }
+          })
       }
 
       import scala.collection.mutable
@@ -400,15 +389,15 @@ trait BspClientTest {
             endpoints.BuildTarget.compile
               .request(bsp.CompileParams(List(), None, None))
               .map {
-                case Right(r) =>
-                  if (r.statusCode.code == 0) Right(())
+                case RpcSuccess(result, underlying) =>
+                  if (result.statusCode.code == 0) Right(())
                   else {
                     val builder = new StringBuilder()
-                    builder.++=(s"Error when compiling no target: ${r}\n")
+                    builder.++=(s"Error when compiling no target: ${result}\n")
                     logger.underlying.errors.foreach(error => builder.++=(error))
                     Left(builder.mkString)
                   }
-                case Left(e) =>
+                case RpcFailure(methodName, e) =>
                   Left(
                     s"""Compilation error for request ${e.id}:
                        |${e.error}""".stripMargin
@@ -528,14 +517,14 @@ trait BspClientTest {
         implicit val client = c
         endpoints.Workspace.buildTargets.request(bsp.WorkspaceBuildTargetsRequest()).flatMap { ts =>
           ts match {
-            case Right(workspaceTargets) =>
+            case RpcSuccess(workspaceTargets, underlying) =>
               runFromWorkspaceTargets(workspaceTargets.targets).flatMap {
                 case Left(msg) => Task.now(Left(Response.internalError(msg)))
                 case Right(res) => Task.now(Right(res))
               }
 
-            case Left(error) =>
-              Task.now(Left(Response.internalError(s"Target request failed with $error.")))
+            case RpcFailure(methodName, e) =>
+              Task.now(Left(Response.internalError(s"Target request failed with $e.")))
           }
         }
       }

@@ -5,17 +5,13 @@ import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
-
 import scala.collection.mutable
 import scala.concurrent.Promise
 import scala.concurrent.duration.FiniteDuration
-import scala.meta.jsonrpc.BaseProtocolMessage
 import scala.util.Try
-
 import ch.epfl.scala.bsp
 import ch.epfl.scala.bsp.ScalacOptionsResult
 import ch.epfl.scala.bsp.endpoints
-
 import bloop.TestSchedulers
 import bloop.bsp.BloopBspDefinitions.BloopExtraBuildParams
 import bloop.cli.BspProtocol
@@ -34,13 +30,16 @@ import bloop.testing.BaseSuite
 import bloop.util.CrossPlatform
 import bloop.util.TestProject
 import bloop.util.TestUtil
-
+import jsonrpc4s.RpcClient
 import monix.eval.Task
 import monix.execution.CancelableFuture
 import monix.execution.Scheduler
 import monix.execution.atomic.AtomicInt
 import monix.reactive.Observable
 import monix.reactive.subjects.BehaviorSubject
+
+import jsonrpc4s._
+import com.github.plokhotnyuk.jsoniter_scala.core._
 
 abstract class BspBaseSuite extends BaseSuite with BspClientTest {
   final class UnmanagedBspTestState(
@@ -49,7 +48,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       closeStreamsForcibly: () => Unit,
       currentCompileIteration: AtomicInt,
       diagnostics: ConcurrentHashMap[bsp.BuildTargetIdentifier, StringBuilder],
-      implicit val client: BloopLanguageClient,
+      implicit val client: RpcClient,
       private val serverStates: Observable[State]
   ) {
     val status = state.status
@@ -88,7 +87,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       lastBspStatus: bsp.StatusCode,
       currentCompileIteration: AtomicInt,
       val diagnostics: ConcurrentHashMap[bsp.BuildTargetIdentifier, StringBuilder],
-      implicit val client0: BloopLanguageClient,
+      implicit val client0: RpcClient,
       val serverStates: Observable[State]
   ) {
     val underlying = state
@@ -100,8 +99,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def findBuildTarget(project: TestProject): bsp.BuildTarget = {
       val workspaceTargetTask = {
         Workspace.buildTargets.request(bsp.WorkspaceBuildTargetsRequest()).map {
-          case Left(e) => fail("The request for build targets in ${state.build.origin} failed!")
-          case Right(ts) =>
+          case RpcFailure(methodName, e) => fail("The request for build targets in ${state.build.origin} failed!")
+          case RpcSuccess(ts, underlying) =>
             ts.targets.map(t => t.id -> t).find(_._1 == project.bspId) match {
               case Some((_, target)) => target
               case None => fail(s"Target ${project.bspId} is missing in the workspace! Found ${ts}")
@@ -115,9 +114,9 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def workspaceTargets: bsp.WorkspaceBuildTargetsResult = {
       val workspaceTargetsTask = {
         Workspace.buildTargets.request(bsp.WorkspaceBuildTargetsRequest()).map {
-          case Left(e) =>
+          case RpcFailure(methodName, e) =>
             fail(s"The request for build targets in ${state.build.origin} failed with $e!")
-          case Right(ts) => ts
+          case RpcSuccess(ts, underlying) => ts
         }
       }
 
@@ -128,8 +127,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         project: TestProject
     )(f: bsp.BuildTargetIdentifier => Task[T]): Task[T] = {
       Workspace.buildTargets.request(bsp.WorkspaceBuildTargetsRequest()).flatMap {
-        case Left(e) => fail("The request for build targets in ${state.build.origin} failed!")
-        case Right(ts) =>
+        case RpcFailure(_, _) => fail("The request for build targets in ${state.build.origin} failed!")
+        case RpcSuccess(ts, _) =>
           ts.targets.map(_.id).find(_ == project.bspId) match {
             case Some(target) => f(target)
             case None => fail(s"Target ${project.bspId} is missing in the workspace! Found ${ts}")
@@ -148,7 +147,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         currentCompileIteration.increment(1)
 
         BuildTarget.compile.request(bsp.CompileParams(List(target), originId, None)).flatMap {
-          case Right(r) =>
+          case RpcSuccess(r, _) =>
             // `headL` returns latest saved state from bsp because source is behavior subject
             serverStates.headL.map { state =>
               new ManagedBspTestState(
@@ -160,7 +159,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
                 serverStates
               )
             }
-          case Left(e) => fail(s"Compilation error for request ${e.id}:\n${e.error}")
+          case RpcFailure(_, e) => fail(s"Compilation error for request ${e.id}:\n${e.error}")
         }
       }
     }
@@ -196,7 +195,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def cleanTask(project: TestProject): Task[ManagedBspTestState] = {
       runAfterTargets(project) { target =>
         BuildTarget.cleanCache.request(bsp.CleanCacheParams(List(target))).flatMap {
-          case Right(r) =>
+          case RpcSuccess(r, _) =>
             // `headL` returns latest saved state from bsp because source is behavior subject
             val statusCode = if (r.cleaned) bsp.StatusCode.Ok else bsp.StatusCode.Error
             serverStates.headL.map { state =>
@@ -209,7 +208,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
                 serverStates
               )
             }
-          case Left(e) => fail(s"Clean error for request ${e.id}:\n${e.error}")
+          case RpcFailure(_, e) => fail(s"Clean error for request ${e.id}:\n${e.error}")
         }
       }
     }
@@ -232,7 +231,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         currentCompileIteration.increment(1)
 
         BuildTarget.run.request(bsp.RunParams(target, originId, None, None, None)).flatMap {
-          case Right(r) =>
+          case RpcSuccess(r, _) =>
             // `headL` returns latest saved state from bsp because source is behavior subject
             serverStates.headL.map { state =>
               new ManagedBspTestState(
@@ -244,7 +243,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
                 serverStates
               )
             }
-          case Left(e) => fail(s"Running error for request ${e.id}:\n${e.error}")
+          case RpcFailure(_, e) => fail(s"Running error for request ${e.id}:\n${e.error}")
         }
       }
     }
@@ -268,8 +267,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def requestSources(project: TestProject): bsp.SourcesResult = {
       val sourcesTask = {
         endpoints.BuildTarget.sources.request(bsp.SourcesParams(List(project.bspId))).map {
-          case Left(error) => fail(s"Received error ${error}")
-          case Right(sources) => sources
+          case RpcFailure(_, error) => fail(s"Received error ${error}")
+          case RpcSuccess(sources, _) => sources
         }
       }
 
@@ -279,8 +278,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def requestResources(project: TestProject): bsp.ResourcesResult = {
       val resourcesTask = {
         endpoints.BuildTarget.resources.request(bsp.ResourcesParams(List(project.bspId))).map {
-          case Left(error) => fail(s"Received error ${error}")
-          case Right(resources) => resources
+          case RpcFailure(_, error) => fail(s"Received error ${error}")
+          case RpcSuccess(resources, _) => resources
         }
       }
 
@@ -292,8 +291,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         endpoints.BuildTarget.dependencySources
           .request(bsp.DependencySourcesParams(List(project.bspId)))
           .map {
-            case Left(error) => fail(s"Received error ${error}")
-            case Right(sources) => sources
+            case RpcFailure(_, error) => fail(s"Received error ${error}")
+            case RpcSuccess(sources, _) => sources
           }
       }
 
@@ -305,8 +304,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         endpoints.BuildTarget.inverseSources
           .request(bsp.InverseSourcesParams(bsp.TextDocumentIdentifier(bsp.Uri(document.toBspUri))))
           .map {
-            case Left(error) => fail(s"Received error ${error}")
-            case Right(targets) => targets
+            case RpcFailure(_, error) => fail(s"Received error ${error}")
+            case RpcSuccess(targets, _) => targets
           }
       }
 
@@ -325,8 +324,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       val task = runAfterTargets(project) { target =>
         val params = bsp.ScalaMainClassesParams(List(target), None)
         endpoints.BuildTarget.scalaMainClasses.request(params).map {
-          case Left(error) => fail(s"Received error $error")
-          case Right(result) => result
+          case RpcFailure(_, error) => fail(s"Received error $error")
+          case RpcSuccess(result, _) => result
         }
       }
 
@@ -337,8 +336,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       val task = runAfterTargets(project) { target =>
         val params = bsp.ScalaTestClassesParams(List(target), None)
         ScalaTestClasses.endpoint.request(params).map {
-          case Left(error) => fail(s"Received error $error")
-          case Right(result) => result
+          case RpcFailure(_, error) => fail(s"Received error $error")
+          case RpcSuccess(result, underlying) => result
         }
       }
 
@@ -354,9 +353,9 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
           val params = paramsFactory(target)
 
           endpoints.DebugSession.start.request(params).map {
-            case Left(error) =>
+            case RpcFailure(_, error) =>
               fail(s"Received error $error") // todo it is repeated everywhere! extract
-            case Right(result) => result
+            case RpcSuccess(result, _) => result
           }
         }
 
@@ -396,8 +395,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def scalaOptions(project: TestProject): (ManagedBspTestState, bsp.ScalacOptionsResult) = {
       val scalacOptionsTask: Task[ScalacOptionsResult] = runAfterTargets(project) { target =>
         endpoints.BuildTarget.scalacOptions.request(bsp.ScalacOptionsParams(List(target))).map {
-          case Left(error) => fail(s"Received error ${error}")
-          case Right(options) => options
+          case RpcFailure(_, error) => fail(s"Received error ${error}")
+          case RpcSuccess(options, _) => options
         }
       }
       await(scalacOptionsTask)
@@ -406,8 +405,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     def javacOptions(project: TestProject): (ManagedBspTestState, bsp.JavacOptionsResult) = {
       val javacOptionsTask = runAfterTargets(project) { target =>
         endpoints.BuildTarget.javacOptions.request(bsp.JavacOptionsParams(List(target))).map {
-          case Left(error) => fail(s"Received error ${error}")
-          case Right(options) => options
+          case RpcFailure(_, error) => fail(s"Received error ${error}")
+          case RpcSuccess(options, _) => options
         }
       }
       await(javacOptionsTask)
@@ -421,8 +420,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         endpoints.BuildTarget.jvmRunEnvironment
           .request(bsp.JvmRunEnvironmentParams(List(target), originId))
           .map {
-            case Left(error) => fail(s"Received error ${error}")
-            case Right(jvmEnvironment) => jvmEnvironment
+            case RpcFailure(_, error) => fail(s"Received error ${error}")
+            case RpcSuccess(jvmEnvironment, _) => jvmEnvironment
           }
       }
 
@@ -437,8 +436,8 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         endpoints.BuildTarget.jvmTestEnvironment
           .request(bsp.JvmTestEnvironmentParams(List(target), originId))
           .map {
-            case Left(error) => fail(s"Received error ${error}")
-            case Right(jvmEnvironment) => jvmEnvironment
+            case RpcFailure(_, error) => fail(s"Received error ${error}")
+            case RpcSuccess(jvmEnvironment, _) => jvmEnvironment
           }
       }
 
@@ -647,8 +646,10 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         ()
       }
 
-      implicit val lsClient = new BloopLanguageClient(out, logger)
-      val messages = BaseProtocolMessage.fromInputStream(in, logger)
+      implicit val lsClient: RpcClient = RpcClient.fromOutputStream(out, logger)
+      val messages = LowLevelMessage
+        .fromInputStream(in, logger)
+        .mapEval(msg => Task(LowLevelMessage.toMsg(msg)))
       val addDiagnosticsHandler = addServicesTest(
         configDirectory,
         () => compileIteration.get,
@@ -657,10 +658,11 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       )
 
       val services = addDiagnosticsHandler(TestUtil.createTestServices(false, logger))
-      val lsServer = new BloopLanguageServer(messages, lsClient, services, ioScheduler, logger)
-      val runningClientServer = lsServer.processMessagesSequentiallyTask.runAsync(ioScheduler)
+      val lsServer = RpcServer(messages, lsClient, services, ioScheduler, logger)
+      val runningClientServer = lsServer.startTask(Task(()))
       val cwd = configDirectory.underlying.getParent
-      val additionalData = Try(BloopExtraBuildParams.encoder(bloopExtraParams)).toOption
+
+      val additionalData = Try(writeToArray[BloopExtraBuildParams](bloopExtraParams)).toOption.map(RawJson(_))
       val initializeServer = endpoints.Build.initialize.request(
         bsp.InitializeBuildParams(
           clientName,
@@ -672,12 +674,11 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         )
       )
 
-      val initializedTask = {
-        val startedServer = Task.fromFuture(readyToConnect.future)
-        initializeServer.delayExecutionWith(startedServer).flatMap { _ =>
-          Task.fromFuture(endpoints.Build.initialized.notify(bsp.InitializedBuildParams()))
-        }
-      }
+      val initializedTask = for {
+        _ <- Task.fromFuture(readyToConnect.future)
+        _ <- initializeServer
+        ack <- Task.fromFuture(endpoints.Build.initialized.notify(bsp.InitializedBuildParams()))
+      } yield ack
 
       val closeTask = {
         endpoints.Build.shutdown.request(bsp.Shutdown()).flatMap { _ =>

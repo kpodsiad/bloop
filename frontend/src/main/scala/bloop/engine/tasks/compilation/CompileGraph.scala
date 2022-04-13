@@ -282,18 +282,18 @@ object CompileGraph {
         }
 
         val compileAndDeduplicate = Task
-          .chooseFirstOf(
+          .racePair(
             obtainResultFromDeduplication,
             Task.fromFuture(deduplicateStreamSideEffectsHandle)
           )
           .executeOn(ExecutionContext.ioScheduler)
 
         val finalCompileTask = compileAndDeduplicate.flatMap {
-          case Left((result, deduplicationFuture)) =>
-            Task.fromFuture(deduplicationFuture).map(_ => result)
-          case Right((compilationFuture, deduplicationResult)) =>
+          case Left((result, deduplicationFiber)) =>
+            deduplicationFiber.cancel.map(_ => result)
+          case Right((compilationFiber, deduplicationResult)) =>
             deduplicationResult match {
-              case DeduplicationResult.Ok => Task.fromFuture(compilationFuture)
+              case DeduplicationResult.Ok => compilationFiber.join
               case DeduplicationResult.DeduplicationError(t) =>
                 rawLogger.trace(t)
                 val failedDeduplicationResult = Compiler.Result.GlobalError(
@@ -308,7 +308,7 @@ object CompileGraph {
                  * replace the result by a failed result that informs the
                  * client compilation was not successfully deduplicated.
                  */
-                Task.fromFuture(compilationFuture).map { results =>
+                compilationFiber.join.map { results =>
                   PartialCompileResult.mapEveryResult(results) { (p: PartialCompileResult) =>
                     p match {
                       case s: PartialSuccess =>
@@ -345,7 +345,6 @@ object CompileGraph {
                   runningCompilation
                 )
 
-                compilationFuture.cancel()
                 reporter.processEndCompilation(Nil, StatusCode.Cancelled, None, None)
                 reporter.reportEndCompilation()
 
@@ -356,7 +355,10 @@ object CompileGraph {
                   """.stripMargin
                 )
 
-                setupAndDeduplicate(client, inputs, setup)(compile)
+                for {
+                  _ <- compilationFiber.cancel
+                  result <- setupAndDeduplicate(client, inputs, setup)(compile)
+                } yield result
             }
         }
 
