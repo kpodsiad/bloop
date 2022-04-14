@@ -6,9 +6,8 @@ import java.nio.file.NoSuchFileException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-import scala.concurrent.Future
 import scala.concurrent.Promise
-import scala.meta.jsonrpc.BaseProtocolMessage
+import scala.util.control.NonFatal
 
 import bloop.cli.Commands
 import bloop.data.ClientInfo
@@ -20,17 +19,13 @@ import bloop.io.ServerHandle
 import bloop.logging.BspClientLogger
 import bloop.logging.DebugFilter
 
+import jsonrpc4s.LowLevelMessage
+import jsonrpc4s.RpcClient
+import jsonrpc4s.RpcServer
 import monix.eval.Task
-import monix.execution.Ack
-import monix.execution.Cancelable
 import monix.execution.Scheduler
 import monix.execution.atomic.Atomic
 import monix.execution.cancelables.AssignableCancelable
-import monix.execution.cancelables.CompositeCancelable
-import monix.execution.misc.NonFatal
-import monix.reactive.Observer
-import monix.reactive.observables.ObservableLike
-import monix.reactive.observers.Subscriber
 import monix.reactive.subjects.BehaviorSubject
 
 object BspServer {
@@ -73,11 +68,16 @@ object BspServer {
 
       // FORMAT: OFF
       val bspLogger = new BspClientLogger(logger)
-      val client = new BloopLanguageClient(out, bspLogger)
-      val messages = BaseProtocolMessage.fromInputStream(in, bspLogger)
       val stopBspConnection = AssignableCancelable.single()
+      val messages = LowLevelMessage
+        .fromInputStream(in, bspLogger)
+        .mapEval(msg => Task(LowLevelMessage.toMsg(msg)))
+        .executeAsync
+
+      val client = RpcClient.fromOutputStream(out, bspLogger)
       val provider = new BloopBspServices(state, client, config, stopBspConnection, externalObserver, isCommunicationActive, connectedBspClients, scheduler, ioScheduler)
-      val server = new BloopLanguageServer(messages, client, provider.services, ioScheduler, bspLogger)
+      // In this case BloopLanguageServer doesn't use input observable
+      val server: RpcServer = RpcServer(messages, client, provider.services, ioScheduler, bspLogger)
       // FORMAT: ON
 
       def error(msg: String): Unit = provider.stateAfterExecution.logger.error(msg)
@@ -100,21 +100,6 @@ object BspServer {
        * reset/IO exception.
        */
 
-      import monix.reactive.Observable
-      import monix.reactive.MulticastStrategy
-      val (bufferedObserver, endObservable) =
-        Observable.multicast(MulticastStrategy.publish[BaseProtocolMessage])(ioScheduler)
-
-      import scala.collection.mutable
-      import monix.execution.cancelables.AssignableCancelable
-      // We set the value of this cancelable when we start consuming task
-      var completeSubscribers: Cancelable = Cancelable.empty
-      val cancelables = new mutable.ListBuffer[Cancelable]()
-      val cancelable = AssignableCancelable.multi { () =>
-        val tasksToCancel = cancelables.synchronized { cancelables.toList }
-        Cancelable.cancelAll(completeSubscribers :: tasksToCancel)
-      }
-
       def onFinishOrCancel[T](cancelled: Boolean, result: Option[Throwable]) = Task {
         if (isCommunicationActive.getAndSet(false)) {
           val latestState = provider.stateAfterExecution
@@ -134,8 +119,8 @@ object BspServer {
           try {
             if (cancelled) error(s"BSP server cancelled, closing socket...")
             else result.foreach(t => error(s"BSP server stopped by ${t.getMessage}"))
-            cancelable.cancel()
-            server.cancelAllRequests()
+            // cancelable.cancel()
+            server.cancelActiveClientRequests()
           } finally {
 
             // Spawn deletion of orphan client directories every time we start a new connection
@@ -152,59 +137,11 @@ object BspServer {
             )
 
             // The code above should not throw, but move this code to a finalizer to be 100% sure
-            closeCommunication(externalObserver, latestState, socket, serverSocket)
+            closeCommunication(latestState, socket, serverSocket)
             ()
           }
         }
       }
-
-      import monix.reactive.Consumer
-      val singleMessageConsumer = Consumer.foreachAsync[BaseProtocolMessage] { msg =>
-        val taskToRun = {
-          server
-            .handleMessage(msg)
-            .flatMap(msg => Task.fromFuture(client.serverRespond(msg)).map(_ => ()))
-            .onErrorRecover { case NonFatal(e) => bspLogger.error("Unhandled error", e); () }
-        }
-
-        val cancelable = taskToRun.runAsync(ioScheduler)
-        cancelables.synchronized { cancelables.+=(cancelable) }
-        Task
-          .fromFuture(cancelable)
-          .doOnFinish(_ => Task { cancelables.synchronized { cancelables.-=(cancelable) }; () })
-      }
-
-      val startedSubscription: Promise[Unit] = Promise[Unit]()
-
-      /**
-       * Make manual subscription to consumer so that we can control the
-       * cancellation for both the source and the consumer. Otherwise, there is
-       * no way to call the cancelable produced by the consumer.
-       */
-      val consumingWithBalancedForeach = Task.create[List[Unit]] { (scheduler, cb) =>
-        if (!isCommunicationActive.get) {
-          cb.onSuccess(Nil)
-          startedSubscription.success(())
-          Cancelable.empty
-        } else {
-          val parallelConsumer = Consumer.loadBalance(4, singleMessageConsumer)
-          val (out, consumerSubscription) = parallelConsumer.createSubscriber(cb, scheduler)
-          val cancelOut = Cancelable(() => out.onComplete())
-          completeSubscribers = CompositeCancelable(cancelOut)
-          val sourceSubscription = endObservable.subscribe(out)
-          startedSubscription.success(())
-          CompositeCancelable(sourceSubscription, consumerSubscription)
-        }
-      }
-
-      val consumingTask = consumingWithBalancedForeach
-        .doOnCancel(onFinishOrCancel(true, None))
-        .doOnFinish(result => onFinishOrCancel(false, result))
-        .flatMap(_ => server.awaitRunningTasks.map(_ => provider.stateAfterExecution))
-
-      // Start consumer in the background and assign cancelable
-      val consumerFuture = consumingTask.runAsync(ioScheduler)
-      stopBspConnection.:=(Cancelable(() => consumerFuture.cancel()))
 
       /*
        * Defines a task that gets called whenever the socket `InputStream` is
@@ -222,24 +159,21 @@ object BspServer {
        * haven't yet done that in the handling of exit within
        * `BloopBspServices`.
        */
-      val cancelWhenStreamIsClosed: Task[Unit] = Task {
-        if (!provider.exited.get) {
-          consumerFuture.cancel()
-        }
-      }
+      // val cancelWhenStreamIsClosed: Task[Unit] = Task {
+      //   if (!provider.exited.get) {
+      //     consumerFuture.cancel()
+      //   }
+      // }
 
-      val startListeningToMessages = messages
-        .liftByOperator(new PumpOperator(bufferedObserver, consumerFuture))
-        .completedL
-        .doOnFinish(_ => cancelWhenStreamIsClosed)
-        .flatMap(_ => Task.fromFuture(consumerFuture))
-
-      // Make sure we only start listening when the subscription has started,
-      // there is a race condition and we might miss the initialization messages
       for {
-        _ <- Task.fromFuture(startedSubscription.future).executeOn(ioScheduler)
-        latestState <- startListeningToMessages.executeOn(ioScheduler)
-      } yield latestState
+        serverFiber <- server
+          .startTask(Task.unit)
+          .doOnCancel(onFinishOrCancel(true, None))
+          .doOnFinish(throwableOpt => onFinishOrCancel(false, throwableOpt))
+          .start
+        _ <- serverFiber.join
+        _ <- server.waitForActiveClientRequests
+      } yield provider.stateAfterExecution
     }
 
     val handle = cmd match {
@@ -254,7 +188,8 @@ object BspServer {
     initServer(handle, state).materialize.flatMap {
       case scala.util.Success(socket: ServerSocket) =>
         listenToConnection(handle, socket).onErrorRecoverWith {
-          case t => Task.now(state.withError(s"Exiting BSP server with ${t.getMessage}", t))
+          case t =>
+            Task.now(state.withError(s"Exiting BSP server with ${t.getMessage}", t))
         }
       case scala.util.Failure(t: Throwable) =>
         promiseWhenStarted.foreach(p => if (!p.isCompleted) p.failure(t))
@@ -263,7 +198,6 @@ object BspServer {
   }
 
   def closeCommunication(
-      externalObserver: Option[BehaviorSubject[State]],
       latestState: State,
       socket: Socket,
       serverSocket: ServerSocket
@@ -271,7 +205,8 @@ object BspServer {
     // Close any socket communication asap and swallow exceptions
     try {
       try socket.close()
-      catch { case NonFatal(t) => () } finally {
+      catch { case NonFatal(t) => () }
+      finally {
         try serverSocket.close()
         catch { case NonFatal(t) => () }
       }
@@ -293,45 +228,13 @@ object BspServer {
         }
       }
 
-      val groups = deleteExternalDirsTasks.grouped(4).map(group => Task.gatherUnordered(group))
+      val groups = deleteExternalDirsTasks.grouped(4).map(group => Task.parSequenceUnordered(group)).toVector
       Task
         .sequence(groups)
         .map(_.flatten)
         .map(_ => ())
         .runAsync(ExecutionContext.ioScheduler)
-
       ()
     }
-  }
-
-  final class PumpOperator[A](pumpTarget: Observer.Sync[A], runningFuture: Cancelable)
-      extends ObservableLike.Operator[A, A] {
-    def apply(out: Subscriber[A]): Subscriber[A] =
-      new Subscriber[A] { self =>
-        implicit val scheduler = out.scheduler
-        private[this] val isActive = Atomic(true)
-
-        def onNext(elem: A): Future[Ack] =
-          out.onNext(elem).syncOnContinue {
-            // Forward and ignore ack; safe because observer is sync
-            pumpTarget.onNext(elem)
-            ()
-          }
-
-        def onComplete(): Unit = {
-          if (isActive.getAndSet(false))
-            out.onComplete()
-        }
-
-        def onError(ex: Throwable): Unit = {
-          if (isActive.getAndSet(false)) {
-            // Complete instead of forwarding error so that completeL finishes
-            out.onComplete()
-            runningFuture.cancel()
-          } else {
-            scheduler.reportFailure(ex)
-          }
-        }
-      }
   }
 }
