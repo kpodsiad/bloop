@@ -75,10 +75,7 @@ object SourceHasher {
         }
       }
 
-      def visitFileFailed(
-          t: Path,
-          e: IOException
-      ): FileVisitResult = FileVisitResult.CONTINUE
+      def visitFileFailed(t: Path, e: IOException): FileVisitResult = FileVisitResult.CONTINUE
 
       def preVisitDirectory(
           directory: Path,
@@ -132,11 +129,12 @@ object SourceHasher {
         Cancelable.empty
       } else {
         val (out, consumerSubscription) = collectHashesConsumer.createSubscriber(cb, scheduler)
-        val hashSourcesInParallel = observable.mapParallelUnordered(parallelUnits) { (source: Path) =>
-          Task.eval {
-            val hash = ByteHasher.hashFileContents(source.toFile)
-            HashedSource(PlainVirtualFileConverter.converter.toVirtualFile(source), hash)
-          }
+        val hashSourcesInParallel = observable.mapParallelUnordered(parallelUnits) {
+          (source: Path) =>
+            Task.eval {
+              val hash = ByteHasher.hashFileContents(source.toFile)
+              HashedSource(PlainVirtualFileConverter.converter.toVirtualFile(source), hash)
+            }
         }
 
         val sourceSubscription = hashSourcesInParallel.subscribe(out)
@@ -163,5 +161,5 @@ object SourceHasher {
           }
       }
       .doOnCancel(Task { isCancelled.compareAndSet(false, true); () })
-  }
+  }.executeWithOptions(_.disableAutoCancelableRunLoops)
 }
