@@ -33,77 +33,33 @@ class BspCompileSpec(
         assertExitStatus(state, ExitStatus.Ok)
       }
     }
-    val jsonrpc = logger.debugs.filter(_.startsWith(" -->"))
+    val jsonrpc = logger.debugs.filter(_.contains(" -->"))
     // Filter out the initialize request that contains platform-specific details
     val allButInitializeRequest = jsonrpc.filterNot(_.contains("""build/initialize""""))
+    val obtained = allButInitializeRequest.mkString
+    // some IDEs might trim spaces in multiline string
+    val spaces = "       "
+    val expected = 
+      s"""|
+          |  --> header: Content-Length -> 494
+          |  --> content: {"result":{"displayName":"${BuildInfo.bloopName}","version":"${BuildInfo.version}","bspVersion":"${BuildInfo.bspVersion}","capabilities":{"compileProvider":{"languageIds":["scala","java"]},"testProvider":{"languageIds":["scala","java"]},"runProvider":{"languageIds":["scala","java"]},"inverseSourcesProvider":true,"dependencySourcesProvider":true,"resourcesProvider":true,"buildTargetChangedProvider":false,"jvmTestEnvironmentProvider":true,"jvmRunEnvironmentProvider":true,"canReload":false}},"id":2,"jsonrpc":"2.0"}
+          |$spaces
+          |  --> header: Content-Length -> 58
+          |  --> content: {"method":"build/initialized","params":{},"jsonrpc":"2.0"}
+          |$spaces
+          |  --> header: Content-Length -> 62
+          |  --> content: {"method":"build/shutdown","params":{},"id":3,"jsonrpc":"2.0"}
+          |$spaces
+          |  --> header: Content-Length -> 36
+          |  --> content: {"result":{},"id":3,"jsonrpc":"2.0"}
+          |$spaces
+          |  --> header: Content-Length -> 51
+          |  --> content: {"method":"build/exit","params":{},"jsonrpc":"2.0"}
+          |$spaces""".stripMargin
+
     assertNoDiff(
-      allButInitializeRequest.mkString(lineSeparator),
-      s"""| --> {
-          |  "result" : {
-          |    "displayName" : "${BuildInfo.bloopName}",
-          |    "version" : "${BuildInfo.version}",
-          |    "bspVersion" : "${BuildInfo.bspVersion}",
-          |    "capabilities" : {
-          |      "compileProvider" : {
-          |        "languageIds" : [
-          |          "scala",
-          |          "java"
-          |        ]
-          |      },
-          |      "testProvider" : {
-          |        "languageIds" : [
-          |          "scala",
-          |          "java"
-          |        ]
-          |      },
-          |      "runProvider" : {
-          |        "languageIds" : [
-          |          "scala",
-          |          "java"
-          |        ]
-          |      },
-          |      "inverseSourcesProvider" : true,
-          |      "dependencySourcesProvider" : true,
-          |      "resourcesProvider" : true,
-          |      "buildTargetChangedProvider" : false,
-          |      "jvmTestEnvironmentProvider" : true,
-          |      "jvmRunEnvironmentProvider" : true,
-          |      "canReload" : false
-          |    },
-          |    "data" : null
-          |  },
-          |  "id" : "2",
-          |  "jsonrpc" : "2.0"
-          |}
-          | --> {
-          |  "method" : "build/initialized",
-          |  "params" : {
-          |    
-          |  },
-          |  "jsonrpc" : "2.0"
-          |}
-          | --> {
-          |  "method" : "build/shutdown",
-          |  "params" : {
-          |    
-          |  },
-          |  "id" : "3",
-          |  "jsonrpc" : "2.0"
-          |}
-          | --> {
-          |  "result" : {
-          |    
-          |  },
-          |  "id" : "3",
-          |  "jsonrpc" : "2.0"
-          |}
-          | --> {
-          |  "method" : "build/exit",
-          |  "params" : {
-          |    
-          |  },
-          |  "jsonrpc" : "2.0"
-          |}""".stripMargin
+      obtained,
+      expected
     )
   }
 
