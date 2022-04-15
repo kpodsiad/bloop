@@ -27,6 +27,13 @@ import monix.execution.Scheduler
 import monix.execution.atomic.Atomic
 import monix.execution.cancelables.AssignableCancelable
 import monix.reactive.subjects.BehaviorSubject
+import monix.reactive.subjects.ConcurrentSubject
+import monix.reactive.Observer
+import monix.execution.Ack
+import monix.reactive.Observable
+import monix.reactive.MulticastStrategy
+import jsonrpc4s.LowLevelMessage
+import jsonrpc4s.RpcClient
 
 object BspServer {
   private implicit val logContext: DebugFilter = DebugFilter.Bsp
@@ -52,6 +59,8 @@ object BspServer {
   ): Task[State] = {
     import state.logger
 
+    pprint.log("run")
+
     def listenToConnection(handle: ServerHandle, serverSocket: ServerSocket): Task[State] = {
       val isCommunicationActive = Atomic(true)
       val connectionURI = handle.uri
@@ -76,7 +85,6 @@ object BspServer {
 
       val client = RpcClient.fromOutputStream(out, bspLogger)
       val provider = new BloopBspServices(state, client, config, stopBspConnection, externalObserver, isCommunicationActive, connectedBspClients, scheduler, ioScheduler)
-      // In this case BloopLanguageServer doesn't use input observable
       val server: RpcServer = RpcServer(messages, client, provider.services, ioScheduler, bspLogger)
       // FORMAT: ON
 
@@ -185,7 +193,8 @@ object BspServer {
         ServerHandle.Tcp(address, portNumber, backlog = 10)
     }
 
-    initServer(handle, state).materialize.flatMap {
+    // introduce asyncBoundary because listenToConnection is blocking
+    initServer(handle, state).asyncBoundary.materialize.flatMap {
       case scala.util.Success(socket: ServerSocket) =>
         listenToConnection(handle, socket).onErrorRecoverWith {
           case t =>

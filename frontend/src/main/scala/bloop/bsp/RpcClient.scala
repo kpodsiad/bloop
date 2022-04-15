@@ -51,8 +51,7 @@ class RpcClient(
   def serverRespond(response: Response): Future[Ack] = {
     response match {
       case Response.None => Ack.Continue
-      case x: Response.Success => 
-        out.onNext(x)
+      case x: Response.Success => out.onNext(x)
       case x: Response.Error => out.onNext(x)
     }
   }

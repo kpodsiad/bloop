@@ -284,7 +284,7 @@ class BspMetalsClientSpec(
 
       val allClients = Random.shuffle(List(client1, client2, metalsClient))
       TestUtil.await(FiniteDuration(20, "s"), ExecutionContext.ioScheduler) {
-        Task.gatherUnordered(allClients).map(_ => ())
+        Task.parSequenceUnordered(allClients).void
       }
 
       assert(configDir.resolve(WorkspaceSettings.settingsFileName).exists)
@@ -512,6 +512,7 @@ class BspMetalsClientSpec(
       .filterNot(_.isEmpty)
       .sorted
       .mkString(lineSeparator)
+
     assertNoDiff(
       javacOptions.sorted.mkString(lineSeparator),
       expectedOptions

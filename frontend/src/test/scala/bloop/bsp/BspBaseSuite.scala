@@ -632,6 +632,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
     val bspServerStarted = bspServer
       .doOnFinish(_ => Task(subject.onComplete()))
       .runAsync(ioScheduler)
+
     val stringifiedDiagnostics = new ConcurrentHashMap[bsp.BuildTargetIdentifier, StringBuilder]()
     val bspClientExecution = establishClientConnection(cmd).flatMap { socket =>
       val in = socket.getInputStream
@@ -659,10 +660,12 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
 
       val services = addDiagnosticsHandler(TestUtil.createTestServices(false, logger))
       val lsServer = RpcServer(messages, lsClient, services, ioScheduler, logger)
-      val runningClientServer = lsServer.startTask(Task(()))
+      val runningClientServer = lsServer.startTask(Task.unit)
       val cwd = configDirectory.underlying.getParent
 
+
       val additionalData = Try(writeToArray[BloopExtraBuildParams](bloopExtraParams)).toOption.map(RawJson(_))
+      pprint.log("initializeServer")
       val initializeServer = endpoints.Build.initialize.request(
         bsp.InitializeBuildParams(
           clientName,
@@ -674,9 +677,13 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         )
       )
 
+      pprint.log("client connection")
       val initializedTask = for {
         _ <- Task.fromFuture(readyToConnect.future)
-        _ <- initializeServer
+        _ = pprint.log("ready to connect")
+        x <- initializeServer
+        _ = pprint.log("initialized")
+        _ = pprint.log(x)
         ack <- Task.fromFuture(endpoints.Build.initialized.notify(bsp.InitializedBuildParams()))
       } yield ack
 
@@ -708,6 +715,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
       // The timeout for all our bsp tests, no matter what operation they run, is 30s
       val (closeServer, closeStreamsForcibly, client, stateObservable) =
         Await.result(bspClient, FiniteDuration(30, "s"))
+      pprint.log("closing")
       new UnmanagedBspTestState(
         state,
         closeServer,

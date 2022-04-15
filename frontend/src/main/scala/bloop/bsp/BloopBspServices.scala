@@ -62,7 +62,7 @@ import bloop.reporter.ReporterInputs
 import bloop.testing.BspLoggingEventHandler
 import bloop.testing.TestInternals
 import bloop.util.JavaRuntime
-import jsonrpc4s.{RawJson, Response, RpcClient, Services}
+import jsonrpc4s.{RawJson, Response, Services}
 import monix.eval.Task
 import monix.execution.Cancelable
 import monix.execution.Scheduler
@@ -1308,4 +1308,5 @@ object BloopBspServices {
   private[bloop] val DefaultCompileProvider = bsp.CompileProvider(DefaultLanguages)
   private[bloop] val DefaultTestProvider = bsp.TestProvider(DefaultLanguages)
   private[bloop] val DefaultRunProvider = bsp.RunProvider(DefaultLanguages)
+  private[bloop] val DefaultDebugProvider = bsp.DebugProvider(DefaultLanguages)
 }

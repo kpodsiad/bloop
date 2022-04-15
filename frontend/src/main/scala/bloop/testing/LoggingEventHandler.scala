@@ -9,9 +9,10 @@ import ch.epfl.scala.debugadapter.testing.TestUtils
 import bloop.logging.DebugFilter
 import bloop.logging.Logger
 import bloop.util.TimeFormat
-import jsonrpc4s.RpcClient
 import sbt.testing.Event
 import sbt.testing.Status
+
+import bloop.bsp.RpcClient
 
 trait BloopTestSuiteEventHandler extends TestSuiteEventHandler {
   def report(): Unit

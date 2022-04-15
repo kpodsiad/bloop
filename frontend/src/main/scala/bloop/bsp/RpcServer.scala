@@ -125,9 +125,7 @@ class RpcServer protected (
 
   protected def handleValidMessage(message: Message): Task[Response] = {
     message match {
-      case response: Response => 
-        pprint.log("handle response")
-        handleResponse(response)
+      case response: Response => handleResponse(response)
       case notification: Notification => handleNotification(notification)
       case request: Request => handleRequest(request)
     }
@@ -137,9 +135,13 @@ class RpcServer protected (
     in.doAfterSubscribe(afterSubscribe)
       .mapEval { msg =>
         handleValidMessage(msg)
-          .map {
-            case Response.None => ()
-            case response => client.serverRespond(response)
+          .map { response => 
+            response match {
+              case Response.None => ()
+              case Response.Success(result, _, _, _) => 
+                client.serverRespond(response)
+              case response => client.serverRespond(response)
+            }
           }
           .onErrorRecover {
             case NonFatal(e) => logger.error("Unhandled error responding to JSON-RPC client", e)

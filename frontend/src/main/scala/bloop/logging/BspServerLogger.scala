@@ -10,11 +10,11 @@ import ch.epfl.scala.bsp.Uri
 import ch.epfl.scala.bsp.endpoints.Build
 import bloop.engine.State
 import bloop.logging.BspServerLogger.BloopCompileReport
-import jsonrpc4s.RpcClient
 import monix.execution.atomic.AtomicInt
 import sbt.internal.inc.bloop.ZincInternals
 import xsbti.Severity
-import jsonrpc4s.RpcClient
+
+import bloop.bsp.RpcClient
 import jsonrpc4s.RawJson
 
 /**
