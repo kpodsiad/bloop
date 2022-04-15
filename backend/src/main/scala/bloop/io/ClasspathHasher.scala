@@ -227,7 +227,7 @@ object ClasspathHasher {
           }
       }
     }
-  }
+  }.executeWithOptions(_.disableAutoCancelableRunLoops)
 
   private[this] val definedMacrosJarCache = new ConcurrentHashMap[File, (JarMetadata, Boolean)]()
 
