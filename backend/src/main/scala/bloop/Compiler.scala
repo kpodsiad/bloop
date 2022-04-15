@@ -633,7 +633,7 @@ object Compiler {
               Result.Failed(Nil, Some(t), elapsed, backgroundTasks)
           }
       }
-  }
+  }.executeWithOptions(_.disableAutoCancelableRunLoops)
 
   def toBackgroundTasks(
       tasks: List[(AbsolutePath, Reporter, BraveTracer) => Task[Unit]]

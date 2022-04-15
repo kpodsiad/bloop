@@ -324,7 +324,7 @@ object CompileTask {
           .doOnFinish(_ => Task(rootTracer.terminate()))
       }
     }
-  }
+  }.executeWithOptions(_.disableAutoCancelableRunLoops)
 
   case class ConfiguredCompilation(scalacOptions: List[String])
   private def configureCompilation(
