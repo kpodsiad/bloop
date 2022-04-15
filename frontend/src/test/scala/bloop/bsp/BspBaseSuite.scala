@@ -660,7 +660,7 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
 
       val services = addDiagnosticsHandler(TestUtil.createTestServices(false, logger))
       val lsServer = RpcServer(messages, lsClient, services, ioScheduler, logger)
-      val runningClientServer = lsServer.startTask(Task.unit)
+      val runningClientServer = lsServer.startTask(Task.unit).runToFuture(ioScheduler)
       val cwd = configDirectory.underlying.getParent
 
 
@@ -683,7 +683,6 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
         _ = pprint.log("ready to connect")
         x <- initializeServer
         _ = pprint.log("initialized")
-        _ = pprint.log(x)
         ack <- Task.fromFuture(endpoints.Build.initialized.notify(bsp.InitializedBuildParams()))
       } yield ack
 
@@ -709,12 +708,12 @@ abstract class BspBaseSuite extends BaseSuite with BspClientTest {
 
     import scala.concurrent.Await
     import scala.concurrent.duration.FiniteDuration
-    val bspClient = bspClientExecution.runAsync(ioScheduler)
+    val bspClient = bspClientExecution.runToFuture(ioScheduler)
 
     try {
       // The timeout for all our bsp tests, no matter what operation they run, is 30s
       val (closeServer, closeStreamsForcibly, client, stateObservable) =
-        Await.result(bspClient, FiniteDuration(30, "s"))
+        Await.result(bspClient, FiniteDuration(10, "s"))
       pprint.log("closing")
       new UnmanagedBspTestState(
         state,
